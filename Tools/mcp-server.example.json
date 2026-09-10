@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "ai-shader-unity": {
+      "command": "python",
+      "args": ["H:/tmp/URP-AI/Tools/ai_shader_mcp_server.py"],
+      "env": {
+        "AI_SHADER_UNITY_BRIDGE": "http://127.0.0.1:47831/mcp"
+      }
+    }
+  }
+}

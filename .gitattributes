@@ -1,0 +1,42 @@
+# Normalize text files
+* text=auto eol=lf
+
+# Unity / C# / shader sources
+*.cs text diff=csharp
+*.shader text
+*.hlsl text
+*.cginc text
+*.compute text
+*.asmdef text
+*.json text
+*.md text
+*.py text
+*.ts text
+
+# Unity YAML assets are text and benefit from stable diffs
+*.unity text
+*.prefab text
+*.mat text
+*.asset text
+*.meta text
+*.controller text
+*.anim text
+*.playable text
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.tga binary
+*.psd binary
+*.fbx binary
+*.obj binary
+*.blend binary
+*.wav binary
+*.mp3 binary
+*.ogg binary
+*.mp4 binary
+*.mov binary
+*.dll binary
+*.pdb binary

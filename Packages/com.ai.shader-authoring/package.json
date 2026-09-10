@@ -1,0 +1,10 @@
+{
+  "name": "com.ai.shader-authoring",
+  "version": "0.1.0",
+  "displayName": "AI Shader Authoring",
+  "description": "Project-aware shader authoring and staged validation tools for Unity.",
+  "unity": "6000.0",
+  "dependencies": {
+    "com.unity.render-pipelines.universal": "17.5.0"
+  }
+}

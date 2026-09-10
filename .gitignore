@@ -1,0 +1,90 @@
+# Unity generated folders
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+
+# Unity generated project files
+*.csproj
+*.sln
+*.slnx
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# IDE folders and files
+.vs/
+.vscode/
+.idea/
+*.suo
+*.ncb
+*.user
+*.DotSettings.user
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Crash dumps and profiling output
+*.dmp
+*.stackdump
+*.log
+*.profiler
+*.data
+
+# Unity package/cache artifacts
+Packages/com.unity.*@*/
+Packages/*@*/
+
+# Generated package metadata/cache
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+node_modules/
+
+# Python cache and local environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+
+# Local MCP/runtime state
+Tools/.cache/
+Tools/.tmp/
+Tools/*.local.*
+*.token
+*.secret
+
+# Generated AI Shader validation output
+Assets/AIShader/Validation/Captures/
+Assets/AIShader/Validation/Reports/
+Assets/AIShader/Validation/Screenshots/
+Assets/AIShader/Generated/
+
+# Local project context can contain user-specific paths
+ProjectSettings/AIShaderProjectContext.json
+
+# Unity package manager local lock/cache files
+Packages/packages-lock.json
+
+# Keep package source, documentation and generated sample assets tracked
+!Packages/com.ai.shader-authoring/
+!Packages/com.ai.shader-authoring/**
+!Assets/AIShader/SimplePBR.shader
+!Assets/AIShader/README.md
