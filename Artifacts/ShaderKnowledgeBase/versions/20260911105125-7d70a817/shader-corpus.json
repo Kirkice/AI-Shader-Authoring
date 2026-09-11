@@ -1,0 +1,842 @@
+[
+  {
+    "path": "Packages/com.unity.render-pipelines.core/Editor/Gizmo/UnlitGizmo.shader",
+    "sourceRevision": "2393f5121c7d1f0ceda18afa230063ec00842dfabc0dddc0112b4164200eaf09",
+    "shaderName": "Hidden/UnlitTransparentColored",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/Editor/Lighting/ProbeVolume/VoxelizeScene.shader",
+    "sourceRevision": "6e32ef93b14e1d42a8040cf645f95a1b5bdc55c97f837afa31ca6e579846b99e",
+    "shaderName": "Hidden/ProbeVolume/VoxelizeScene",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/Editor/PostProcessing/LensFlareResource/LensFlareDataDriven.shader",
+    "sourceRevision": "e9d9c8376b6db361d330c1dc8de34a79b16ea2ca9cf325fe19d661e2c04ae5b1",
+    "shaderName": "Hidden/Core/LensFlareDataDrivenPreview2",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/Editor/PostProcessing/LensFlareResource/LensFlareDataDrivenPreview.shader",
+    "sourceRevision": "7109b4c87bdbc838fd5933f1dfa92c3e1eabb0990765f8f4bd9b5a6d951efff5",
+    "shaderName": "Hidden/Core/LensFlareDataDrivenPreview",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/Runtime/Debug/ProbeVolumeDebug.shader",
+    "sourceRevision": "c4acc439f6063e8ec13efd285a25c1c020fdaea4f39d80d748c1ef767126b2dc",
+    "shaderName": "Hidden/Core/ProbeVolumeDebug",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/Runtime/Debug/ProbeVolumeFragmentationDebug.shader",
+    "sourceRevision": "6cafa0f587b5c93e72792b9f24cda517c6a2af3734ea233168708c347b54516f",
+    "shaderName": "Hidden/Core/ProbeVolumeFragmentationDebug",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/Runtime/Debug/ProbeVolumeOffsetDebug.shader",
+    "sourceRevision": "46183d2161d4caba686dcf3abb42b0b3c82dc9a055641a2f85fbdad5bb523d20",
+    "shaderName": "Hidden/Core/ProbeVolumeOffsetDebug",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/Runtime/Debug/ProbeVolumeSamplingDebug.shader",
+    "sourceRevision": "72d74a960dad6a9b16325d3d9618fd64ab4ac8875b6d08872ef55997a8f33eb1",
+    "shaderName": "Hidden/Core/ProbeVolumeSamplingDebug",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/Runtime/PathTracing/Shaders/Lightmapping/ChartRasterizerHardware.shader",
+    "sourceRevision": "402766597254c440b50f6f06610de8cd704e1382eec43742897dfbc1bd4ec75f",
+    "shaderName": "Hidden/ChartRasterizerHardware",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/Runtime/PathTracing/Shaders/Lightmapping/ChartRasterizerSoftware.shader",
+    "sourceRevision": "7aec2713a1da7d808028f1a5eccf6cabc14e0af10b48a0adabe1ad6b2711d78d",
+    "shaderName": "Hidden/ChartRasterizerSoftware",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/Runtime/PathTracing/Shaders/Lightmapping/UVFallbackBufferGeneration.shader",
+    "sourceRevision": "e36f8b366806ae25f8e342a1b8f366d526c5731a73a4b5d604ec27cbb0e41068",
+    "shaderName": "Hidden/UVFallbackBufferGeneration",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/Runtime/PathTracing/Shaders/PassthroughMetaPass.shader",
+    "sourceRevision": "c2a6f1ccc239942f32d58fd5cc21db813d6b4aae8eb0fcf6b02c871b30b5e72e",
+    "shaderName": "Hidden/PassthroughMetaPass",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/Runtime/PathTracing/Shaders/PassthroughSkybox.shader",
+    "sourceRevision": "dd7527f89b89f41774853c545e7be5c1efcc4478654a09559cc98174cf6041f6",
+    "shaderName": "Hidden/PassthroughSkybox",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/Runtime/RenderPipelineResources/FallbackShader.shader",
+    "sourceRevision": "d98a814cd05dc721837098cdeb82e916f7f452e125de12f49ed1bb02f2b21e93",
+    "shaderName": "Hidden/Core/FallbackError",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/Runtime/RenderPipelineResources/GPUDriven/DebugOccluder.shader",
+    "sourceRevision": "d9de8aaf4ad40daa33af29d6ebebf512b86d32dc30c0d680f40a4c2067c69be4",
+    "shaderName": "Hidden/Core/DebugOccluder",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/Runtime/RenderPipelineResources/GPUDriven/DebugOcclusionTest.shader",
+    "sourceRevision": "db0dd8b9b76016b079156d78f2fbe885e2c87a39f7f6c0997adc5fc02cd0c7af",
+    "shaderName": "Hidden/Core/DebugOcclusionTest",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/Runtime/Vrs/Shaders/VrsVisualization.shader",
+    "sourceRevision": "851a8e37f87a2dcde0260a404ad7f5a445cc3de42746d15fd28be593356d1540",
+    "shaderName": "Hidden/Core/VrsVisualization",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/Shaders/CoreCopy.shader",
+    "sourceRevision": "29fbf9c27b9ab41f04dfa3e2424df8746a91f75d046df5365fd5b9d642a88ac5",
+    "shaderName": "Hidden/CoreSRP/CoreCopy",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/Tests/Editor/ShaderStripping/DummyPipelineShader.shader",
+    "sourceRevision": "658113413a74b0802d3687d8fa9fcf98bd003612dd839a2c7e46873abd6a6e61",
+    "shaderName": "Hidden/DummyPipeline/VariantStrippingTestsShader",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/Tests/Editor/SimpleDots.shader",
+    "sourceRevision": "d26d376bba22c3873080c7c9492da884957826a655d85748483c29d88031a3d8",
+    "shaderName": "Unlit/SimpleDots",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/Tests/Editor/SimpleSpeedTreeDots.shader",
+    "sourceRevision": "8349c9e7e16181d2ac36f73ae2ef97c38663ea7a63b54ec7928617e07f762840",
+    "shaderName": "Unlit/SimpleSpeedTreeDots",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/Tests/Runtime/PathTracing/UniformAlbedoMetaPass.shader",
+    "sourceRevision": "cd349ad7b188464ad7d8523b314c58b5e0ee755e0be138f34aa7586545d99771",
+    "shaderName": "PathIteratorTesting/UniformAlbedoMetaPass",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/Tests/Runtime/PathTracing/UniformCubemap.shader",
+    "sourceRevision": "8f308c84854f29f587488bb1d3b65bd7af4889b8c64289a69bb9dd597664ddd6",
+    "shaderName": "PathIteratorTesting/UniformCubemap",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Editor/Overrides/Shaders/CurveBackground.shader",
+    "sourceRevision": "d17fddc927203f53ce9c031159df50112a17c13c3f465df4913966f4f82c9f8b",
+    "shaderName": "Hidden/Universal Render Pipeline/Editor/CurveBackground",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Editor/Overrides/Shaders/ShadowsMidtonesHighlightsCurves.shader",
+    "sourceRevision": "2694bd69ed6597635fb747d5ced38a401b3c855d9090bae2c8d8731f52e1c925",
+    "shaderName": "Hidden/Universal Render Pipeline/Editor/Shadows Midtones Highlights Curve",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Editor/Overrides/Shaders/TrackballEditor.shader",
+    "sourceRevision": "fe4962eefe5e38d14bc5dac5579099860101ad6c7fe55ce91e47ad4cdef600f8",
+    "shaderName": "Hidden/Universal Render Pipeline/Editor/Trackball",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Editor/ShaderGraph/GraphTemplates/2D/0_2D Sprite Lit.shadergraph",
+    "sourceRevision": "6587e4dd2c9e88a279037a0f44f88a44eb3eac0fc0766154ebafecf10e7f6959",
+    "shaderName": "Hidden/Shader Graphs/0_2D Sprite Lit",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Editor/ShaderGraph/GraphTemplates/2D/1_2D Sprite Unlit.shadergraph",
+    "sourceRevision": "dff3bc20d881e9d45942787330b606fa0e51c84a3168f9f214392477310c1ff7",
+    "shaderName": "Hidden/Shader Graphs/1_2D Sprite Unlit",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Editor/ShaderGraph/GraphTemplates/2D/2_2D Sprite Custom Lit.shadergraph",
+    "sourceRevision": "566bc9dafc289012b1e091eb75ae1b1be3cc398f9fb707ef3ea9c5da8d9b5ab6",
+    "shaderName": "Hidden/Shader Graphs/2_2D Sprite Custom Lit",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Editor/ShaderGraph/GraphTemplates/Fullscreen Basic URP.shadergraph",
+    "sourceRevision": "2d8e6beeda820b9617b6939598d3b7f371257ffe9071759144d34860c39d040a",
+    "shaderName": "Hidden/Shader Graphs/Fullscreen Basic URP",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Editor/ShaderGraph/GraphTemplates/Terrain Standard 4 Layers URP.shadergraph",
+    "sourceRevision": "9630c5bd0e9af42d395670e3922376b46cef544df0c836faa2a8bd8c239ceaa7",
+    "shaderName": "Hidden/Terrain/Terrain Standard 4 Layers URP",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Editor/ShaderGraph/GraphTemplates/UITKBasicTemplate.shadergraph",
+    "sourceRevision": "ff82d73550481be888f9cb0c64da6c05a7125aa0d14e8d4ef0b64cd11603d56d",
+    "shaderName": "Hidden/Shader Graphs/UITKBasicTemplate",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Editor/ShaderGraph/GraphTemplates/UITKFullTemplate.shadergraph",
+    "sourceRevision": "1bed646b99060c836a34e435aa00514d27a1abbdd4d5dbfdad0c713846bf4ae0",
+    "shaderName": "Hidden/Shader Graphs/UITKFullTemplate",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Runtime/Decal/DBuffer/DBufferClear.shader",
+    "sourceRevision": "5fb93781fd6a64e8e46de832ab60d30756b35b0f9d4a42a7fa6160cd55dd4522",
+    "shaderName": "Hidden/Universal Render Pipeline/DBufferClear",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Runtime/Materials/ArnoldStandardSurface/ArnoldStandardSurface.shadergraph",
+    "sourceRevision": "2563874958c6dc081b0453a5bda005f5b253ef6b3ea73ff714ae1163822d205d",
+    "shaderName": "Shader Graphs/ArnoldStandardSurface",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Runtime/Materials/ArnoldStandardSurface/ArnoldStandardSurfaceTransparent.shadergraph",
+    "sourceRevision": "2e073b0d62f72d63f32ba0a9d2ff54cb297d7c658d95ea1968a9c2c503a3a8ed",
+    "shaderName": "Shader Graphs/ArnoldStandardSurfaceTransparent",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Runtime/Materials/PhysicalMaterial3DsMax/PhysicalMaterial3DsMax.shadergraph",
+    "sourceRevision": "bd5dff6e9bc1cd6d847d3477b443d365d740d8558000bfff65222ff35ee1e905",
+    "shaderName": "Shader Graphs/PhysicalMaterial3DsMax",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Runtime/Materials/PhysicalMaterial3DsMax/PhysicalMaterial3DsMaxTransparent.shadergraph",
+    "sourceRevision": "274949a4fa4e6e874e4b040d2cce0e52bda552d219b3b99661e29d847c504bba",
+    "shaderName": "Shader Graphs/PhysicalMaterial3DsMaxTransparent",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Runtime/RendererFeatures/OnTileUberPost.shader",
+    "sourceRevision": "c9f3703ba953bf7051ddfaac215f2a0167c87132e2c78be8208ed7978c5baf57",
+    "shaderName": "OnTileUberPost",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Runtime/RendererFeatures/SurfaceCacheGIRendererFeature/FallbackMaterial.shader",
+    "sourceRevision": "a540edfacc11c934b27d553a4353a0ed31c6a97fa8182199b5ca05ab50c7c455",
+    "shaderName": "Hidden/SurfaceCache/Fallback",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/2D/Light2D.shader",
+    "sourceRevision": "c876d16c3a40b48eaed0d81c087ca889f99dfdd4f79b95d7a1f8b5c1fdfacf1f",
+    "shaderName": "Hidden/Light2D",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/2D/Mesh2D-Lit-Default.shader",
+    "sourceRevision": "921924ef2c2774c7e30fcb21adb5cfb0963227aa08a38034333eee088dfc0a39",
+    "shaderName": "Universal Render Pipeline/2D/Mesh2D-Lit-Default",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/2D/Mesh2D-Unlit-Default.shader",
+    "sourceRevision": "98d759e9b913baf3e4cb200876619ab2164e10920e45289424520d976f173b1f",
+    "shaderName": "Universal Render Pipeline/2D/Mesh2D-Unlit-Default",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/2D/RenderAs2D-Flattening.shader",
+    "sourceRevision": "175264451553fd4003875bfc9399d75ea6f62438c88633275af1d58564e22ece",
+    "shaderName": "2D/RenderAs2D-Flattening",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/2D/Shadow2D-Projected.shader",
+    "sourceRevision": "7b284f48ca4158eb0a6b00808ed881af4b9d2e3420dde25d49991f931556cd94",
+    "shaderName": "Hidden/ShadowProjected2D",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/2D/Shadow2D-Shadow-Geometry.shader",
+    "sourceRevision": "6e43a4908976c9488075ef24a6105b24b42f7f53eb7b989319cc256543a1e754",
+    "shaderName": "Hidden/Shadow2DShadowGeometry",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/2D/Shadow2D-Shadow-Sprite.shader",
+    "sourceRevision": "3059b04487264f15711c975c272605c5bd5fd2fbdda5f7434698d9b07522443d",
+    "shaderName": "Hidden/Shadow2DShadowSprite",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/2D/Shadow2D-Unshadow-Geometry.shader",
+    "sourceRevision": "584efa10cb4eddaec2c74d5f57c1a4a65bc81a16ce5f2081d02ec7d598f91402",
+    "shaderName": "Hidden/Shadow2DUnshadowGeometry",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/2D/Shadow2D-Unshadow-Sprite.shader",
+    "sourceRevision": "b3b17b50a3844ddbad03e5ad888fea94ad5209a6babfc9a4f530839b6ba40e4f",
+    "shaderName": "Hidden/Shadow2DUnshadowSprite",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/2D/Sprite-Lit-Default.shader",
+    "sourceRevision": "1429736dff787ea67213a3fa96225eac12e516a5cb67e4d7f97162c8ce1bac52",
+    "shaderName": "Universal Render Pipeline/2D/Sprite-Lit-Default",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/2D/Sprite-Mask.shader",
+    "sourceRevision": "893a09f1e6d1b9293b0424aef69ae6cb7c04f2ef4fba33d2a0acf89871c8e204",
+    "shaderName": "Universal Render Pipeline/2D/Sprite-Mask",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/2D/Sprite-Unlit-Default.shader",
+    "sourceRevision": "d19a2caaab6f79f79e949b2a07f5495f1831fb589537c069d6fd670f47a46c9d",
+    "shaderName": "Universal Render Pipeline/2D/Sprite-Unlit-Default",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/2D/VFXSpriteLit.shadergraph",
+    "sourceRevision": "51a2e42330b09a39430dbc4911732eb9cdeb33096b7cd9c8108766f131942b4e",
+    "shaderName": "VFX Graph/VFXSpriteLit",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/2D/VFXSpriteUnlit.shadergraph",
+    "sourceRevision": "d4d5f738d1a2e7d4baa05532da1f56ed60dffaac33ab0731b5df905be70bf6da",
+    "shaderName": "VFX Graph/VFXSpriteUnlit",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/AutodeskInteractive/AutodeskInteractive.shadergraph",
+    "sourceRevision": "3a470df1dff4e2123de21d350fb4ddd754ad1a36af2da1196328a126a7b42c44",
+    "shaderName": "Universal Render Pipeline/Autodesk Interactive/AutodeskInteractive",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/AutodeskInteractive/AutodeskInteractiveMasked.shadergraph",
+    "sourceRevision": "02a2469db260a433abf7950d1b807bf30ce98fc438a75e07f06296bdfff37e54",
+    "shaderName": "Universal Render Pipeline/Autodesk Interactive/AutodeskInteractiveMasked",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/AutodeskInteractive/AutodeskInteractiveTransparent.shadergraph",
+    "sourceRevision": "f63d1a84ac6bea2df1f7ac1200481bc804fb6b5be2d9cd0a23cd2b6f77a2b6e5",
+    "shaderName": "Universal Render Pipeline/Autodesk Interactive/AutodeskInteractiveTransparent",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/BRGPicking.shader",
+    "sourceRevision": "4b7a6fcf9c2d9be931c89d05a5c654ee3486e1a7e59cb9d83d3557d39aae28d5",
+    "shaderName": "Hidden/Universal Render Pipeline/BRGPicking",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/BakedLit.shader",
+    "sourceRevision": "5c0333524fce891dd0186b290549b0ce0a571b5caa2addc02e665b9004560b62",
+    "shaderName": "Universal Render Pipeline/Baked Lit",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/CameraMotionVectors.shader",
+    "sourceRevision": "d0e1927c83b413aafbab771e3ab910c19755449fadd0f5ae7b67cae7d2979ba8",
+    "shaderName": "Hidden/Universal Render Pipeline/CameraMotionVectors",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/ComplexLit.shader",
+    "sourceRevision": "9e9f5346742b9a77f0405fdcc4e7eaec1aee62729bc7df555b0366c7ada059e8",
+    "shaderName": "Universal Render Pipeline/Complex Lit",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Debug/DebugReplacement.shader",
+    "sourceRevision": "87aa9907968957814bd7fea5c0954afe73e3b5be5a9883b670f0f2cf89753ff3",
+    "shaderName": "Hidden/Universal Render Pipeline/Debug/DebugReplacement",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Debug/HDRDebugView.shader",
+    "sourceRevision": "b6bf1c24c3522ca660981312bbf6184d0ca7269d0e4f36988c294b124cecf696",
+    "shaderName": "Hidden/Universal/HDRDebugView",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Decal.shadergraph",
+    "sourceRevision": "3ebb4dcf49699c79a34865415e6334cb3b2f1ebcf6f008cf5a9933674ad99b20",
+    "shaderName": "Shader Graphs/Decal",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/FullscreenInvertColors.shadergraph",
+    "sourceRevision": "88e51fc7476acb813c59f5975692209f7e0f5896e371e18af52ce20c8e46875e",
+    "shaderName": "Shader Graphs/FullscreenInvertColors",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Lit.shader",
+    "sourceRevision": "d012fadd60a3e5c19a57d501a3e010ad0ee6067465fee135a421afea08b4da45",
+    "shaderName": "Universal Render Pipeline/Lit",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Nature/SpeedTree7.shader",
+    "sourceRevision": "c40b7291450bf493177cfdc5e3c1f6cf43d7cf43487742ad1859964f1c6ae74b",
+    "shaderName": "Universal Render Pipeline/Nature/SpeedTree7",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Nature/SpeedTree7Billboard.shader",
+    "sourceRevision": "275fae02a759fcc002d43813ae02b4e074649140c7bcbfd9ffc3909783ba8881",
+    "shaderName": "Universal Render Pipeline/Nature/SpeedTree7 Billboard",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Nature/SpeedTree8.shader",
+    "sourceRevision": "0b7f5e92471dcad920991b128fcb231f767cf07615bf21b52cc09e043fc7fb0f",
+    "shaderName": "Universal Render Pipeline/Nature/SpeedTree8",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Nature/SpeedTree8_PBRLit.shadergraph",
+    "sourceRevision": "36ea81e622a4bf838b57fa3293399fa536a4ac3a5b6b2530244c8100097fc681",
+    "shaderName": "Universal Render Pipeline/Nature/SpeedTree8_PBRLit",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Nature/SpeedTree9_URP.shadergraph",
+    "sourceRevision": "7bbd09fc798d99ad0a54e3b69d62330a02abdf579b2a67864fc8dae773c9afee",
+    "shaderName": "Universal Render Pipeline/Nature/SpeedTree9_URP",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/ObjectMotionVectorFallback.shader",
+    "sourceRevision": "43f8270dee0c34ab90482483cd8e85166f15d20764be72bda50a006ba4cd929d",
+    "shaderName": "Hidden/Universal Render Pipeline/ObjectMotionVectorFallback",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Particles/ParticlesLit.shader",
+    "sourceRevision": "630a0a256d4e38860060a329e63a744e7b3a95e8038a3c45d2fe152cbf3cafbd",
+    "shaderName": "Universal Render Pipeline/Particles/Lit",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Particles/ParticlesSimpleLit.shader",
+    "sourceRevision": "3b3b97e9cad6948727bbcbd9a1957cd2189fdfbb9aae7684abc02b487a36fd0e",
+    "shaderName": "Universal Render Pipeline/Particles/Simple Lit",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Particles/ParticlesUnlit.shader",
+    "sourceRevision": "1cd8356cf8cb67f065b7d2f67b071190a675a98c8cdea5a45028c0cb3c9e1e18",
+    "shaderName": "Universal Render Pipeline/Particles/Unlit",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/PostProcessing/Bloom.shader",
+    "sourceRevision": "7c0fe7d6e3e79ecce5ddd0de29574298723789c650f4db60940b6fe2e4ca1942",
+    "shaderName": "Hidden/Universal Render Pipeline/Bloom",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/PostProcessing/BokehDepthOfField.shader",
+    "sourceRevision": "0832e88938830e8e08613830643ef0b48572408e40fc4540de7e702731b1e233",
+    "shaderName": "Hidden/Universal Render Pipeline/BokehDepthOfField",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/PostProcessing/CameraMotionBlur.shader",
+    "sourceRevision": "60555b5c91155f7f6a32f9abac04faa62a78a9a3d58034882aff7b6440644780",
+    "shaderName": "Hidden/Universal Render Pipeline/CameraMotionBlur",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/PostProcessing/EdgeAdaptiveSpatialUpsampling.shader",
+    "sourceRevision": "8c00ba6f3465720e9295e7335c2e6958b3000d5cefd1363ea876fc4c6d917ecd",
+    "shaderName": "Hidden/Universal Render Pipeline/Edge Adaptive Spatial Upsampling",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/PostProcessing/FinalPost.shader",
+    "sourceRevision": "31347fbb2cc8a479818684ce6419e77e5a26c8ece8e8d215820813b3fc343f47",
+    "shaderName": "Hidden/Universal Render Pipeline/FinalPost",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/PostProcessing/GaussianDepthOfField.shader",
+    "sourceRevision": "daf1449bbd23d14eba8381cba415b2fae995ea7a1f0ab279d1731e40f3537735",
+    "shaderName": "Hidden/Universal Render Pipeline/GaussianDepthOfField",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/PostProcessing/LensFlareDataDriven.shader",
+    "sourceRevision": "bf43d36bf0e1e24c1ec6fd08dfb5e378a5d3fd299465d3c1531f225bdea94e3c",
+    "shaderName": "Hidden/Universal Render Pipeline/LensFlareDataDriven",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/PostProcessing/LensFlareScreenSpace.shader",
+    "sourceRevision": "3cd6c18348914be6627c4c82888328503f855b624da6ff931c648a86231624a2",
+    "shaderName": "Hidden/Universal Render Pipeline/LensFlareScreenSpace",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/PostProcessing/LutBuilderHdr.shader",
+    "sourceRevision": "9aaa902e8d6b47f9fd9a96b6d52fe0c677cb98204fa8e0f96a7995dc8b711f9a",
+    "shaderName": "Hidden/Universal Render Pipeline/LutBuilderHdr",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/PostProcessing/LutBuilderLdr.shader",
+    "sourceRevision": "e858546a45890d9b45f3d83f289ced7ab28a594c6bbfaa76e484f2b954e34f4a",
+    "shaderName": "Hidden/Universal Render Pipeline/LutBuilderLdr",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/PostProcessing/PaniniProjection.shader",
+    "sourceRevision": "e9d728d3e795e1b551f0acc73b69717cc1d10754ec6f7712266977e80918bb1d",
+    "shaderName": "Hidden/Universal Render Pipeline/PaniniProjection",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/PostProcessing/ScalingSetup.shader",
+    "sourceRevision": "9e3ce9bc1d27d9d39496c023c1d3bf208f4e253295a2fcee2e1dc7391521008b",
+    "shaderName": "Hidden/Universal Render Pipeline/Scaling Setup",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/PostProcessing/StopNaN.shader",
+    "sourceRevision": "157731dfb02a03e11525737375c1872296eb0e1e301cac9ab56edb97162ff489",
+    "shaderName": "Hidden/Universal Render Pipeline/Stop NaN",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/PostProcessing/SubpixelMorphologicalAntialiasing.shader",
+    "sourceRevision": "84d602c0d79abaadda480ab88b28b324529d50c8bd1d02d80f9fa1fb25da6372",
+    "shaderName": "Hidden/Universal Render Pipeline/SubpixelMorphologicalAntialiasing",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/PostProcessing/TemporalAA.shader",
+    "sourceRevision": "48b53bc4087c86a1e56976afbe1faefbd73a4e6452997a670de0a4d887488451",
+    "shaderName": "Hidden/Universal Render Pipeline/TemporalAA",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/PostProcessing/UberPost.shader",
+    "sourceRevision": "45844e94306f54d05090a75a7c12faa262dc552fbe02dff89cf4e747c33f3685",
+    "shaderName": "Hidden/Universal Render Pipeline/UberPost",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/SimpleLit.shader",
+    "sourceRevision": "f1afca3e1de6a85f1c12505eb0c1a3ef74d6c743758e4914fa71561e80c2a355",
+    "shaderName": "Universal Render Pipeline/Simple Lit",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/SpatialMappingOcclusion.shader",
+    "sourceRevision": "cfc04b16430f4ff4d695b6d26b768e6f601d1756577807e542ebfa4c2d762b34",
+    "shaderName": "Universal Render Pipeline/VR/SpatialMapping/Occlusion",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/SpatialMappingWireframe.shader",
+    "sourceRevision": "7fb99c5ef6bbe1ae7de2350a971389cc81a86341880d8d9c897974c42143232e",
+    "shaderName": "Universal Render Pipeline/VR/SpatialMapping/Wireframe",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Terrain/TerrainDetailLit.shader",
+    "sourceRevision": "98ebda6601233e87ca9406d95e858c288131b6df80e2bd3ed6681ab09be31eb4",
+    "shaderName": "Hidden/TerrainEngine/Details/UniversalPipeline/Vertexlit",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Terrain/TerrainLit.shader",
+    "sourceRevision": "96285924d74275068018e0db3f5eab5884252ebd71d777d77a4c8920b029ea09",
+    "shaderName": "Universal Render Pipeline/Terrain/Lit",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Terrain/TerrainLitAdd.shader",
+    "sourceRevision": "20364d6eadfb30f9cd445af102f499f32ce9cda9784988dc2ff5ad75c76ff6e5",
+    "shaderName": "Hidden/Universal Render Pipeline/Terrain/Lit (Add Pass)",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Terrain/TerrainLitBase.shader",
+    "sourceRevision": "e0ff859c7fabc2ad94601304a8bbc7b4be0c9022a3b1f06dbcb887b48311caec",
+    "shaderName": "Hidden/Universal Render Pipeline/Terrain/Lit (Base Pass)",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Terrain/TerrainLitBasemapGen.shader",
+    "sourceRevision": "49ddcc8f1a65f6132e6372e6e33c61ee226a0991a041e7cf22c6e517d637bda0",
+    "shaderName": "Hidden/Universal Render Pipeline/Terrain/Lit (Basemap Gen)",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Terrain/WavingGrass.shader",
+    "sourceRevision": "78eb8c543a3c501272e2c3ffb7dae75fd5f8abeb07e0c643854a78c9086f9dda",
+    "shaderName": "Hidden/TerrainEngine/Details/UniversalPipeline/WavingDoublePass",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Terrain/WavingGrassBillboard.shader",
+    "sourceRevision": "4d5786de577584e3feb2fe52da8456e39c8fae687b51305f1eb59bd3e03f25ef",
+    "shaderName": "Hidden/TerrainEngine/Details/UniversalPipeline/BillboardWavingDoublePass",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Unlit.shader",
+    "sourceRevision": "98f30b86307dea8275a104ae756a87186d94ddd9cb41f6931a3a37be5bf9878a",
+    "shaderName": "Universal Render Pipeline/Unlit",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Utils/Blit.shader",
+    "sourceRevision": "a2cca82e05b2c2b50e700c8e8b017d7f6b720e1d64ed0619b753675bed38748b",
+    "shaderName": "Hidden/Universal Render Pipeline/Blit",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Utils/BlitHDROverlay.shader",
+    "sourceRevision": "30e8725cf1c0f59b03e0299475e0519d9c582e3e1ce87c2acea7b3c468bea346",
+    "shaderName": "Hidden/Universal/BlitHDROverlay",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Utils/ClusterDeferred.shader",
+    "sourceRevision": "3c3cc5fa0fa33d0091fae03ac9498554ec5ef9cec6dd7cc81b7f4a59dae2dc86",
+    "shaderName": "Hidden/Universal Render Pipeline/ClusterDeferred",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Utils/CopyDepth.shader",
+    "sourceRevision": "465d81eb964e0b44485a2c0f6e4bfd42e66fc6329b4164f1775b57519851646e",
+    "shaderName": "Hidden/Universal Render Pipeline/CopyDepth",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Utils/CoreBlit.shader",
+    "sourceRevision": "111adb36a08142215867771ad85487ce6aae4880e08e54569ac7d90996519067",
+    "shaderName": "Hidden/Universal/CoreBlit",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Utils/CoreBlitColorAndDepth.shader",
+    "sourceRevision": "6b1fdb6e02f6e5b85564c623a90ed715a5a738818f4957b59c466c60258778be",
+    "shaderName": "Hidden/Universal/CoreBlitColorAndDepth",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Utils/FallbackError.shader",
+    "sourceRevision": "6bdb875dc44fdbdd5ea2a92b3c9bd7aaf9ac9e7650c62bd9e77d0332d048418e",
+    "shaderName": "Hidden/Universal Render Pipeline/FallbackError",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Utils/FallbackLoading.shader",
+    "sourceRevision": "8ff806d54958ab7a333f8c96598685b2160cb94f1f85abad2bfd5314be8662e6",
+    "shaderName": "Hidden/Universal Render Pipeline/FallbackLoading",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Utils/MaterialError.shader",
+    "sourceRevision": "27c150efff8baee9e8787d44dc5a32d9b8e352c7651485fc10f96477dd5a83bb",
+    "shaderName": "Hidden/Universal Render Pipeline/MaterialError",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Utils/Sampling.shader",
+    "sourceRevision": "097d0523ccfe54bcd351ff5273840ed5a84dc1ee3ae9fa91bd230003b611c968",
+    "shaderName": "Hidden/Universal Render Pipeline/Sampling",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Utils/ScreenSpaceAmbientOcclusion.shader",
+    "sourceRevision": "c80f2fcd4d166efe99b4e7110a1eaf9bbad7cff99b3d20726c80c45cb216aa9e",
+    "shaderName": "Hidden/Universal Render Pipeline/ScreenSpaceAmbientOcclusion",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Utils/ScreenSpaceShadows.shader",
+    "sourceRevision": "027e52c9fce841b40afa1b6bc9f836bc4ac12599c6eb0ff34a239472897bd50d",
+    "shaderName": "Hidden/Universal Render Pipeline/ScreenSpaceShadows",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Utils/StencilDeferred.shader",
+    "sourceRevision": "928a21b169a352607cc6bb1ffb1cef1be4008110855cd74813923d6e4ca1ad89",
+    "shaderName": "Hidden/Universal Render Pipeline/StencilDeferred",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/Utils/StencilDitherMaskSeed.shader",
+    "sourceRevision": "67bc96547bd5c010b2137f95caf7e70606e56859785874b321282af8dc883465",
+    "shaderName": "Hidden/Universal Render Pipeline/StencilDitherMaskSeed",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/XR/XRMirrorView.shader",
+    "sourceRevision": "287ab3e36dd6fdda72dd57c1cc6d83929b4d3a48da1d5967597a06e7094ed0bf",
+    "shaderName": "Hidden/Universal Render Pipeline/XR/XRMirrorView",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/XR/XRMotionVector.shader",
+    "sourceRevision": "8645c172aa9b3c604e9f936934b753623d03b9e1179c07791a084d858f455fe0",
+    "shaderName": "Hidden/Universal Render Pipeline/XR/XRMotionVector",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Shaders/XR/XROcclusionMesh.shader",
+    "sourceRevision": "15f5f2f7b563a3cf0b9218f091aadafe02d7618dbea10df862e3099237f55272",
+    "shaderName": "Hidden/Universal Render Pipeline/XR/XROcclusionMesh",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Tests/Editor/CustomDepthBlit.shader",
+    "sourceRevision": "e56a7627c87bf05a724abb6f9c37f493ab5416f008eb79ffdc2a0b29b5e78b60",
+    "shaderName": "Hidden/Core/CustomDepthBlit",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Tests/Editor/PostProcessDataTests/1.shader",
+    "sourceRevision": "7109a2b9a385d48565b8d03904c3325563b192eff559c1fd70efeea4d2de3ff3",
+    "shaderName": "Custom/Test Shader",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/Tests/Editor/PostProcessDataTests/2.shader",
+    "sourceRevision": "7109a2b9a385d48565b8d03904c3325563b192eff559c1fd70efeea4d2de3ff3",
+    "shaderName": "Custom/Test Shader",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.shadergraph/Editor/Resources/Shaders/BlitNoAlpha.shader",
+    "sourceRevision": "609e827ca06050ff3bafcf7f05743cc824022a695edafb4623eabed9d919beea",
+    "shaderName": "Hidden/BlitNoAlpha",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.shadergraph/Editor/Resources/Shaders/Checkerboard.shader",
+    "sourceRevision": "f4daa410de2865e2c300eb5a33d12daa99f6f6d037a224534a0303a9d5c0edba",
+    "shaderName": "Hidden/Checkerboard",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.shadergraph/Editor/Resources/Shaders/FallbackError.shader",
+    "sourceRevision": "ed25f92548fb8a4b99574118079b877352dd8142eda87df02ce2c01b25af2699",
+    "shaderName": "Hidden/Shader Graph/FallbackError",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.shadergraph/GraphTemplates/BuiltIn/BuiltIn Lit Basic.shadergraph",
+    "sourceRevision": "2cbdbda7755329783fa482a681ae2ee9444b2e117e6b05296030d9032668f3c1",
+    "shaderName": "Hidden/Shader Graphs/BuiltIn Lit Basic",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.shadergraph/GraphTemplates/BuiltIn/BuiltIn Unlit Basic.shadergraph",
+    "sourceRevision": "5647e2b0cb317e42ea9f2f7da15498e429172b3ce0b551c637e1ef402346e3a9",
+    "shaderName": "Hidden/Shader Graphs/BuiltIn Unlit Basic",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.shadergraph/GraphTemplates/Cross Pipeline/0_Decal Simple.shadergraph",
+    "sourceRevision": "334145b91e379c1462e3d64a7dbc76e4367213721cb80898701361d8ba1ed96d",
+    "shaderName": "Hidden/Decal/0_Decal Simple",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.shadergraph/GraphTemplates/Cross Pipeline/0_Lit Basic.shadergraph",
+    "sourceRevision": "240060596d255f489cfe2ceb2405857b6590a115aaae8036dd24ef418def545b",
+    "shaderName": "Hidden/Lit/0_Lit Basic",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.shadergraph/GraphTemplates/Cross Pipeline/0_Particle Unlit.shadergraph",
+    "sourceRevision": "b089378bc4f3642f68ab87dfdbffe95ae38b76bb1e7c838da65bab7fbd8b3b45",
+    "shaderName": "Hidden/Shader Graphs/Particles/0_Particle Unlit",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.shadergraph/GraphTemplates/Cross Pipeline/1_Decal Material Volume.shadergraph",
+    "sourceRevision": "cdc474d954f411cac1eb15ffd9f9ee27f3ab993905bdda18f4b54c4e3d3f4706",
+    "shaderName": "Hidden/Decal/1_Decal Material Volume",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.shadergraph/GraphTemplates/Cross Pipeline/1_Lit Full.shadergraph",
+    "sourceRevision": "4d4f038776a94b5741a84fbc21efcf6e2c05376ecda80e97ee6239c26c5c672f",
+    "shaderName": "Hidden/Lit/1_Lit Full",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.shadergraph/GraphTemplates/Cross Pipeline/2_Particle Lit.shadergraph",
+    "sourceRevision": "a88c9457aa6b953781f213579490d00c2247260fad17adc45f2a0f3485463154",
+    "shaderName": "Hidden/Shader Graphs/Particles/2_Particle Lit",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.shadergraph/GraphTemplates/Cross Pipeline/Terrain Simple.shadergraph",
+    "sourceRevision": "8562dfbdc1ea12fc2bac9e1abe65cba929feb84a3e4dda849e0b73043b51aa14",
+    "shaderName": "Hidden/Terrain/Terrain Simple",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.shadergraph/GraphTemplates/Cross Pipeline/UGUI Canvas Basic.shadergraph",
+    "sourceRevision": "b87a053130587683c450eb8ff26a11570da6941f748239597f0e85aea12bb68e",
+    "shaderName": "Hidden/UGUI Canvas/UGUI Canvas Basic",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.shadergraph/GraphTemplates/Cross Pipeline/UGUI Canvas Meter.shadergraph",
+    "sourceRevision": "367696f6bc8b58ef24ee22aa24f3ddbc61c9e2e1e56820b8c2d328907b1fa402",
+    "shaderName": "Hidden/UGUI Canvas/UGUI Canvas Meter",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.shadergraph/GraphTemplates/Cross Pipeline/Unlit Simple.shadergraph",
+    "sourceRevision": "9f23a63a8d8559adcbf5003a451a89070811b67658aaf124feffe409eff8cf14",
+    "shaderName": "Hidden/Unlit/Unlit Simple",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.shadergraph/GraphTemplates/Custom Render Texture.shadergraph",
+    "sourceRevision": "8530841c52f14f8b883e1b51344a9a05f69badb25e8319d0d6b2fdd63b176f1a",
+    "shaderName": "Hidden/Shader Graphs/Custom Render Texture",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.test-framework.performance/Editor/TestReportGraph/TestReportShader.shader",
+    "sourceRevision": "e29f0f0b6e6d5880b6f6062e3af909b8e2100c706f5d7cfcbe74be3bfd4ead0e",
+    "shaderName": "Unlit/TestReportShader",
+    "origin": "package"
+  },
+  {
+    "path": "Packages/com.unity.ugui/Editor Resources/Shaders/TMP_SDF Internal Editor.shader",
+    "sourceRevision": "e2358bb1fe28d9af361a7e61540d714e8b5ce4b87c3f1845b351b0891cebae4b",
+    "shaderName": "Hidden/TMP/Internal/Editor/Distance Field SSD",
+    "origin": "package"
+  }
+]

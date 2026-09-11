@@ -1,0 +1,50 @@
+[
+  {
+    "id": "NormalReconstruction.hlsl:SafeNormalize",
+    "function": "SafeNormalize",
+    "category": "transform",
+    "include": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/NormalReconstruction.hlsl",
+    "sourceFile": "NormalReconstruction.hlsl",
+    "signature": "return half3(SafeNormalize(cross(hDeriv, vDeriv)));",
+    "startLine": 40,
+    "endLine": 40,
+    "sourceRevision": "be884d0acc085ce7f243ddf70205ba17092977d24c6761cfbd885348eb69ec15",
+    "evidence": "Extracted from Packages/com.unity.render-pipelines.universal/ShaderLibrary/NormalReconstruction.hlsl line 40."
+  },
+  {
+    "id": "Lighting.hlsl:GetMainLight",
+    "function": "GetMainLight",
+    "category": "lighting",
+    "include": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl",
+    "sourceFile": "Lighting.hlsl",
+    "signature": "if (dot(GetMainLight().direction, inputData.normalWS) \u003C= 0.0)",
+    "startLine": 330,
+    "endLine": 330,
+    "sourceRevision": "26ab9a1634466a75ea8926528e882e05f9960fbb60f5021c044decb03d156e38",
+    "evidence": "Extracted from Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl line 330."
+  },
+  {
+    "id": "BRDF.hlsl:DirectBRDFSpecular",
+    "function": "DirectBRDFSpecular",
+    "category": "brdf",
+    "include": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/BRDF.hlsl",
+    "sourceFile": "BRDF.hlsl",
+    "signature": "return brdfData.diffuse \u002B DirectBRDFSpecular(brdfData, normalWS, lightDirectionWS, viewDirectionWS) * brdfData.specular;",
+    "startLine": 246,
+    "endLine": 246,
+    "sourceRevision": "1e8427056b0ab3046adf753d72fc3afee3d54c335e38a4d1069e6eedb0f78075",
+    "evidence": "Extracted from Packages/com.unity.render-pipelines.universal/ShaderLibrary/BRDF.hlsl line 246."
+  },
+  {
+    "id": "ObjectMotionVectors.hlsl:SampleAlbedoAlpha",
+    "function": "SampleAlbedoAlpha",
+    "category": "alpha",
+    "include": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ObjectMotionVectors.hlsl",
+    "sourceFile": "ObjectMotionVectors.hlsl",
+    "signature": "Alpha(SampleAlbedoAlpha(input.uv, TEXTURE2D_ARGS(_BaseMap, sampler_BaseMap)).a, _BaseColor, _Cutoff);",
+    "startLine": 101,
+    "endLine": 101,
+    "sourceRevision": "3c7ce428bf2abe98c04959d6ae8ceaa3deace1017070ccdd478eff03161a5912",
+    "evidence": "Extracted from Packages/com.unity.render-pipelines.universal/ShaderLibrary/ObjectMotionVectors.hlsl line 101."
+  }
+]

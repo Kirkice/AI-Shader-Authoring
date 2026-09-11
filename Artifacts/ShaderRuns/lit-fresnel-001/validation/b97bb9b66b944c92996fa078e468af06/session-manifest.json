@@ -1,0 +1,19 @@
+{
+  "sessionId": "b97bb9b66b944c92996fa078e468af06",
+  "createdAtUtc": "2026-09-11T11:20:35.7774925Z",
+  "validationScene": {
+    "scenePath": "Assets/Scenes/SampleScene.unity",
+    "cameraPath": "Main Camera",
+    "width": 512,
+    "height": 512
+  },
+  "target": {
+    "objectPath": "Sphere",
+    "materialPath": "Assets/AIShader/Generated/Lit_Fresnel.mat"
+  },
+  "criteria": {
+    "minAverageLuminance": 0.0199999996,
+    "minNonBackgroundRatio": 0.0500000007
+  },
+  "sceneMutation": "The scene is opened additively, the material is restored after capture, and the scene is never saved."
+}

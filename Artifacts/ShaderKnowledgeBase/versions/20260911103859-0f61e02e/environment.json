@@ -1,0 +1,6 @@
+{
+  "unityVersion": "6000.5.4f1",
+  "renderPipeline": "UniversalRenderPipelineAsset",
+  "colorSpace": "Linear",
+  "graphicsDevice": "Direct3D12"
+}

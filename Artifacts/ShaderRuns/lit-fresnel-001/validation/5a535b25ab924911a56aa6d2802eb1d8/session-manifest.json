@@ -1,0 +1,19 @@
+{
+  "sessionId": "5a535b25ab924911a56aa6d2802eb1d8",
+  "createdAtUtc": "2026-09-11T11:21:01.6467774Z",
+  "validationScene": {
+    "scenePath": "Packages/com.ai.shader-authoring/Tests/AI Shader Authoring.unity",
+    "cameraPath": "Main Camera",
+    "width": 768,
+    "height": 768
+  },
+  "target": {
+    "objectPath": "Sphere",
+    "materialPath": "Assets/AIShader/Generated/Lit_Fresnel.mat"
+  },
+  "criteria": {
+    "minAverageLuminance": 0.0199999996,
+    "minNonBackgroundRatio": 0.0500000007
+  },
+  "sceneMutation": "The scene is opened additively, the material is restored after capture, and the scene is never saved."
+}

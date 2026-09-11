@@ -1,0 +1,145 @@
+[
+  {
+    "capability": "surface_parameters_metallic_roughness",
+    "status": "unknown",
+    "include": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/BRDF.hlsl",
+    "function": "InitializeBRDFData",
+    "sourceLocation": null,
+    "signature": null,
+    "confidence": "unknown",
+    "evidence": "Not found in the URP Shader Library (InitializeBRDFData); the capability stays unknown rather than assumed.",
+    "note": "Metallic-Roughness SurfaceParameters \u6784\u5EFA\u5165\u53E3\u3002"
+  },
+  {
+    "capability": "direct_lighting_main",
+    "status": "supported",
+    "include": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl",
+    "function": "GetMainLight",
+    "sourceLocation": "330-330",
+    "signature": "if (dot(GetMainLight().direction, inputData.normalWS) \u003C= 0.0)",
+    "confidence": "high",
+    "evidence": "Resolved from Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl (GetMainLight).",
+    "note": "\u4E3B\u65B9\u5411\u5149\u7ED3\u6784\u4F53\u63A5\u53E3\u3002"
+  },
+  {
+    "capability": "additional_lights_count",
+    "status": "unknown",
+    "include": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RealtimeLights.hlsl",
+    "function": "GetAdditionalLightsCount",
+    "sourceLocation": null,
+    "signature": null,
+    "confidence": "unknown",
+    "evidence": "Not found in the URP Shader Library (GetAdditionalLightsCount); the capability stays unknown rather than assumed.",
+    "note": "\u9644\u52A0\u5149\u6570\u91CF\u63A5\u53E3\u3002"
+  },
+  {
+    "capability": "additional_light_fetch",
+    "status": "unknown",
+    "include": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RealtimeLights.hlsl",
+    "function": "GetAdditionalLight",
+    "sourceLocation": null,
+    "signature": null,
+    "confidence": "unknown",
+    "evidence": "Not found in the URP Shader Library (GetAdditionalLight); the capability stays unknown rather than assumed.",
+    "note": "\u9644\u52A0\u5149\u9010\u4E2A\u83B7\u53D6\u63A5\u53E3\u3002"
+  },
+  {
+    "capability": "indirect_diffuse_sh",
+    "status": "unknown",
+    "include": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl",
+    "function": "SampleSH",
+    "sourceLocation": null,
+    "signature": null,
+    "confidence": "unknown",
+    "evidence": "Not found in the URP Shader Library (SampleSH); the capability stays unknown rather than assumed.",
+    "note": "\u7403\u8C10\u73AF\u5883\u6F2B\u53CD\u5C04\u3002"
+  },
+  {
+    "capability": "indirect_specular_reflection",
+    "status": "unknown",
+    "include": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/GlobalIllumination.hlsl",
+    "function": "GlossyEnvironmentReflection",
+    "sourceLocation": null,
+    "signature": null,
+    "confidence": "unknown",
+    "evidence": "Not found in the URP Shader Library (GlossyEnvironmentReflection); the capability stays unknown rather than assumed.",
+    "note": "\u53CD\u5C04\u63A2\u9488/IBL \u955C\u9762\u73AF\u5883\u5149\uFF1B\u5B9E\u9645\u6548\u679C\u4ECD\u53D6\u51B3\u4E8E\u573A\u666F\u63A2\u9488\u3002"
+  },
+  {
+    "capability": "world_normal_transform",
+    "status": "unknown",
+    "include": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Packages/com.unity.render-pipelines.core/ShaderLibrary/SpaceTransforms.hlsl",
+    "function": "TransformObjectToWorldNormal",
+    "sourceLocation": null,
+    "signature": null,
+    "confidence": "unknown",
+    "evidence": "Not found in the URP Shader Library (TransformObjectToWorldNormal); the capability stays unknown rather than assumed.",
+    "note": "\u4E16\u754C\u7A7A\u95F4\u6CD5\u7EBF\uFF1B\u8BE5\u63A5\u53E3\u4F4D\u4E8E core \u5305\u800C\u975E URP Shader Library\uFF0C\u626B\u63CF\u8303\u56F4\u5916\u65F6\u4FDD\u6301 unknown \u800C\u4E0D\u662F\u81C6\u65AD\u3002"
+  },
+  {
+    "capability": "view_direction_world_space",
+    "status": "unknown",
+    "include": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl",
+    "function": "GetWorldSpaceNormalizeViewDir",
+    "sourceLocation": null,
+    "signature": null,
+    "confidence": "unknown",
+    "evidence": "Not found in the URP Shader Library (GetWorldSpaceNormalizeViewDir); the capability stays unknown rather than assumed.",
+    "note": "\u4E16\u754C\u7A7A\u95F4\u5F52\u4E00\u5316\u89C6\u7EBF\u65B9\u5411\u3002"
+  },
+  {
+    "capability": "vertex_position_inputs",
+    "status": "unknown",
+    "include": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl",
+    "function": "GetVertexPositionInputs",
+    "sourceLocation": null,
+    "signature": null,
+    "confidence": "unknown",
+    "evidence": "Not found in the URP Shader Library (GetVertexPositionInputs); the capability stays unknown rather than assumed.",
+    "note": "\u9876\u70B9\u4F4D\u7F6E\u591A\u7A7A\u95F4\u53D8\u6362\u3002"
+  },
+  {
+    "capability": "fresnel_rim_edge",
+    "status": "unknown",
+    "include": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl",
+    "function": "GetWorldSpaceNormalizeViewDir",
+    "sourceLocation": null,
+    "signature": null,
+    "confidence": "unknown",
+    "evidence": "Not found in the URP Shader Library (GetWorldSpaceNormalizeViewDir); the capability stays unknown rather than assumed.",
+    "note": "\u83F2\u6D85\u5C14\u8FB9\u7F18\u5149\u4F9D\u8D56\u4E16\u754C\u6CD5\u7EBF\u4E0E\u89C6\u7EBF\u65B9\u5411\uFF1B\u8FB9\u7F18\u56E0\u5B50\u4E3A\u827A\u672F\u5316\u53E0\u52A0\u9879\uFF0C\u4E0D\u66FF\u4EE3 BRDF \u4E2D\u7684\u7269\u7406 Fresnel\u3002"
+  },
+  {
+    "capability": "alpha_clip_discard",
+    "status": "unknown",
+    "include": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/SurfaceInput.hlsl",
+    "function": "AlphaDiscard",
+    "sourceLocation": null,
+    "signature": null,
+    "confidence": "unknown",
+    "evidence": "Not found in the URP Shader Library (AlphaDiscard); the capability stays unknown rather than assumed.",
+    "note": "Alpha Clip \u7247\u5143\u88C1\u526A\u3002"
+  },
+  {
+    "capability": "surface_normal_sampling",
+    "status": "unknown",
+    "include": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/SurfaceInput.hlsl",
+    "function": "SampleNormal",
+    "sourceLocation": null,
+    "signature": null,
+    "confidence": "unknown",
+    "evidence": "Not found in the URP Shader Library (SampleNormal); the capability stays unknown rather than assumed.",
+    "note": "\u6CD5\u7EBF\u8D34\u56FE\u91C7\u6837\u3002"
+  },
+  {
+    "capability": "shadow_sampling",
+    "status": "unknown",
+    "include": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RealtimeLights.hlsl",
+    "function": "MainLightRealtimeShadow",
+    "sourceLocation": null,
+    "signature": null,
+    "confidence": "unknown",
+    "evidence": "Not found in the URP Shader Library (MainLightRealtimeShadow); the capability stays unknown rather than assumed.",
+    "note": "\u4E3B\u5149\u5B9E\u65F6\u9634\u5F71\u91C7\u6837\u3002"
+  }
+]

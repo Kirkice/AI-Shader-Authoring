@@ -43,6 +43,8 @@ description: 将自然语言材质需求规范化为标准 PBR 材质意图，�
 8. 任何默认补全必须记录来源、理由和置信度。
 9. 任何 `pass` 必须有静态检查、Unity Console、截图或数值证据；截图不是唯一真值。
 10. `revise` 必须保留当前工件和失败证据；`blocked` 必须说明缺失能力或最小人工决策。
+11. 生成的 Shader 必须与工程既有 Shader 保持同一风格：工程已有 Pass 声明的关键字矩阵、`Attributes`/`Varyings` 布局、Pass 标签与命名约定必须一并继承；任务未映射到的能力以恒等接线保留结构，而不是省略关键字或结构。
+12. 生成的 Shader 与 HLSL 代码注释必须使用中文；注释说明意图、约束与来源，不复述代码字面。
 
 ## 状态机
 
@@ -624,6 +626,8 @@ ProjectShaderProfile
 5. 核验用户提供或计划引用的贴图、目标 Material、Renderer 是否存在且类型可用；缺失资产列入 `missingAssets`。
 6. 将知识库结论与当前项目状态不一致、新发现的 Shader/Include 或配置变化写入 `incrementalEvidence`，请求后续知识库增量刷新；本步骤不得静默刷新知识库。
 7. 未知能力必须保持 `unknown`；不得把知识库中未确认或本轮未核验的功能作为可用能力。
+8. 建立风格基线：从工程样本中提取目标 Pass 的完整关键字矩阵、`Attributes`/`Varyings` 布局、渲染状态与命名约定，写入 `targetAnchors.propertiesAndKeywords`、`targetAnchors.dataStructures` 和 `targetAnchors.renderStateAnchors`，作为纪律 11 的对齐依据。
+9. 工程样本同时包含工程资产与包内资产；样本语料缺少 `Packages/` 覆盖时，不得据此断言工程关键字矩阵。
 
 ### 明确不属于本步骤的工作
 
@@ -688,6 +692,8 @@ ShaderCodePlan
 - 不得整文件重写，除非 Code Plan 明确标注该文件为新生成资产或不存在可复用锚点。
 - 不得修改计划白名单之外的资产。
 - 每次写入前记录基线版本；每次失败保留失败版本和差异。
+- 必须写明风格对齐基线：继承的工程关键字矩阵、`Attributes`/`Varyings` 布局与命名约定（纪律 11），以及每条未继承项的偏差理由。
+- 必须写明注释语言为中文（纪律 12）。
 
 ## Step 7：受限执行
 
@@ -701,6 +707,17 @@ ShaderCodePlan
 | `REFRESH_AND_COMPILE` | [`refresh_and_compile_assets`](../../Tools/unity-mcp-server/src/index.ts:607) |
 | `CAPTURE_EVIDENCE` | [`capture_validation`](../../Tools/unity-mcp-server/src/index.ts:609) |
 | `SAVE_CHECKPOINT` | [`create_shader_checkpoint`](../../Tools/unity-mcp-server/src/index.ts:610) |
+
+### 工程风格对齐（硬性约束）
+
+生成资产不是「最小可用 Shader」，而是**工程既有 Shader 的同风格实现**：
+
+1. 以知识库中的工程样本（`attributesVaryingsStyle`、`fragmentProgramStyle`、`keywords`、`renderStates`）为基线，而不是凭记忆。
+2. 工程 Pass 已声明的关键字必须完整继承，包括随版本更名的关键字（例如 `_CLUSTER_LIGHT_LOOP` 启用后取代已废弃的 `_FORWARD_PLUS`）；删除任何关键字都必须给出证据与理由。
+3. 任务未用到的能力以恒等接线保留结构（例如 Clear Coat 掩码置 `0`、法线贴图槽置默认值），不得因「本次用不到」而裁剪工程既有结构。
+4. 直接复用工程既有的 `Attributes` / `Varyings` 字段与顺序、渲染状态、Pass 标签和命名，除非 Code Plan 明确记录偏差。
+5. 每条差异化都必须写入 Code Plan 的 `plannedChanges`，并在证据中标注来源与置信度。
+6. 若工程样本中不存在可对照的实现，必须在 `unknowns` 中记录，而不是自行发明风格。
 
 ### 执行后强制 Console 检查（硬性门禁）
 
@@ -732,7 +749,7 @@ ShaderCodePlan
 
 ### 固定验证顺序
 
-1. 静态检查：计划白名单、锚点、属性、渲染状态、禁止特性。
+1. 静态检查：计划白名单、锚点、属性、渲染状态、禁止特性，以及纪律 11 的风格对齐项（工程关键字矩阵是否完整继承、`Attributes`/`Varyings` 是否沿用、未继承项是否已记录偏差理由）。
 2. Unity 刷新与 Shader 编译（`refresh_and_compile_assets` → `get_unity_job`）。
 3. Console 读取（`get_console_diagnostics`）：确认无新增 Error；有错则回到 Step 7 修复循环。
 4. 在确定性验证场景中配置球体、相机、主光、环境和材质。
@@ -773,11 +790,25 @@ Stage 10 法线、Alpha Clip、透明等首期扩展
 - 不存在折射、透明阴影、排序修正和深度预通道的错误承诺
 ```
 
+### 验证证据的硬性防线
+
+像素统计只能证明「渲染结果非空」，不能证明「渲染了目标」。出现以下任一情况时**不得**判定 `PASS`，必须记为 `REVISE` 并在证据中说明：
+
+1. **材质替换无效**：两次 `capture_validation` 的 PNG `contentHash` 完全一致。材质 revision 变了而像素不变，说明画面对被替换材质零响应，目标物体不在画面中。
+2. **背景基线不可靠**：统计基线取自 `pixels[0]`（左上角）时，渐变天空盒等非纯色背景会让 `nonBackgroundRatio` 量到背景自身的差异而非目标轮廓（可高达 `0.9+`）。此时必须改用固定背景色或真实背景采样，并人工复核截图。
+3. **目标不可辨认**：截图中无法辨认目标几何，或目标轮廓、占屏比例与相机投影参数（位置、朝向、FOV、近远裁剪）不一致。
+4. **场景与相机不一致**：目标所在场景若以叠加方式打开，渲染必须使用该场景内的相机，且相机与目标同场景；活动场景与验证场景不同时，`Render` 可能渲染的不是验证目标。
+
+第 1 条是首选判别手段：先比对哈希，再人工复核截图，最后才看阈值。
+截图不是唯一真值；当截图与数值证据冲突时，以人工复核截图为准。
+
 ### 决策条件
 
 ```text
 PASS
-  当前阶段编译通过，静态检查通过，Console 无新增错误，验证证据满足明确验收标准。
+  当前阶段编译通过，静态检查通过，Console 无新增错误，验证证据满足明确验收标准，
+  且通过工程风格对齐检查（纪律 11）与验证证据硬性防线（截图哈希随材质变化）。
+  未对齐工程风格、注释非中文、或命中验证防线条目时，一律不得判定 PASS。
 
 REVISE
   存在可定位的代码、数据、公式、参数、颜色空间或场景配置问题；保留现场，仅修正当前假设。
@@ -823,12 +854,15 @@ BLOCKED
 - anchors:
 - planned changes:
 - invariants:
+- project style baseline:（继承的关键字矩阵、Attributes/Varyings、命名约定；未继承项与理由）
+- comment language: 中文
 
 ## Validation
 - static result:
 - compile result:
 - console result:
 - captures and debug channels:
+- capture hash comparison:（材质替换前后的 PNG contentHash 是否变化）
 - comparison result:
 
 ## Decision

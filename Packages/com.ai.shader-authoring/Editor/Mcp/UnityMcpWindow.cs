@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using UnityEditor;
 using UnityEngine;
 
@@ -128,18 +129,23 @@ namespace UnityMcp.Editor
             DrawToolbarSeparator(319f);
             GUI.Label(new Rect(326f, 3f, 154f, 18f), endpoint.Host + ":" + endpoint.Port + "  WebSocket", mutedStyle);
 
+            var settingsX = position.width - 22f;
             var actionWidth = 68f;
-            var actionX = position.width - actionWidth - 29f;
+            var actionX = settingsX - actionWidth - 7f;
+            var cleanupWidth = 96f;
+            var cleanupX = actionX - cleanupWidth - 5f;
             var active = UnityMcpConnection.IsServiceEnabled;
+            if (GUI.Button(new Rect(cleanupX, 2f, cleanupWidth, 20f), "清理验证工件", EditorStyles.toolbarButton))
+                ClearValidationArtifacts();
             if (GUI.Button(new Rect(actionX, 2f, actionWidth, 20f), active ? "断开" : "连接", EditorStyles.toolbarButton))
             {
                 if (active) UnityMcpConnection.StopService();
                 else UnityMcpConnection.StartService();
             }
-            DrawToolbarSeparator(position.width - 25f);
+            DrawToolbarSeparator(settingsX - 4f);
             var settingsContent = EditorGUIUtility.IconContent("SettingsIcon");
             settingsContent.tooltip = "打开项目设置";
-            if (GUI.Button(new Rect(position.width - 22f, 2f, 20f, 20f), settingsContent, EditorStyles.toolbarButton))
+            if (GUI.Button(new Rect(settingsX, 2f, 20f, 20f), settingsContent, EditorStyles.toolbarButton))
                 SettingsService.OpenProjectSettings("Project/Player");
         }
 
@@ -317,6 +323,39 @@ namespace UnityMcp.Editor
                 resultState = ResultState.Error;
             }
             finally { running = false; }
+        }
+
+        private void ClearValidationArtifacts()
+        {
+            const string validationRunsRoot = "Artifacts/ShaderRuns";
+            if (!Directory.Exists(validationRunsRoot))
+            {
+                EditorUtility.DisplayDialog("清理验证工件", "当前没有可清理的验证工件。", "确定");
+                return;
+            }
+
+            var confirmed = EditorUtility.DisplayDialog(
+                "清理验证工件",
+                "将永久删除 Artifacts/ShaderRuns 下所有 Shader 运行记录、截图、报告和 diff。\n\n不会删除 Assets、Packages 或验证场景。此操作无法撤销。",
+                "删除全部运行工件",
+                "取消");
+            if (!confirmed) return;
+
+            try
+            {
+                Directory.Delete(validationRunsRoot, true);
+                ClearResult();
+                resultText = "{\n  \"status\": \"success\",\n  \"action\": \"clear_validation_artifacts\",\n  \"deletedPath\": \"Artifacts/ShaderRuns\"\n}";
+                resultTimestamp = DateTime.Now.ToString("HH:mm:ss");
+                resultState = ResultState.Success;
+                Repaint();
+            }
+            catch (Exception exception)
+            {
+                errorText = "清理验证工件失败：" + exception.Message;
+                resultState = ResultState.Error;
+                Repaint();
+            }
         }
 
         private void ClearResult()

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "1",
+  "freshnessStatus": "fresh",
+  "knowledgeBaseVersion": "20260911103859-0f61e02e",
+  "manifestPath": "Artifacts/ShaderKnowledgeBase/versions/20260911103859-0f61e02e/manifest.json",
+  "generatedAtUtc": "2026-09-11T10:38:59.5950214Z",
+  "environment": {
+    "unityVersion": "6000.5.4f1",
+    "renderPipeline": "UniversalRenderPipelineAsset",
+    "colorSpace": "Linear",
+    "graphicsDevice": "Direct3D12"
+  },
+  "shaderCount": 0
+}

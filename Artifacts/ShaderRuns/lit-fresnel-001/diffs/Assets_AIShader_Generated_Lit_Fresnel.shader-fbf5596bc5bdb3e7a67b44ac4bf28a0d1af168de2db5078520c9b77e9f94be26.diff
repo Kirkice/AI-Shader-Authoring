@@ -1,0 +1,115 @@
+--- before
+
++++ after
+Shader "AIShader/Generated/Lit(Fresnel)"
+{
+    Properties
+    {
+        [MainColor] _BaseColor("Base Color", Color) = (0.5, 0.5, 0.5, 1)
+        _Metallic("Metallic", Range(0,1)) = 0.0
+        _Roughness("Roughness", Range(0.04,1)) = 0.5
+
+        [HDR] _RimColor("Fresnel Rim Color", Color) = (0.1, 0.6, 1.0, 1)
+        _RimIntensity("Fresnel Rim Intensity", Range(0,10)) = 2.0
+        _RimPower("Fresnel Rim Power", Range(0.5,8)) = 3.0
+    }
+    SubShader
+    {
+        Tags { "RenderPipeline"="UniversalPipeline" "RenderType"="Opaque" "Queue"="Geometry" }
+        Pass
+        {
+            Name "ForwardLitFresnel"
+            Tags { "LightMode"="UniversalForward" }
+            ZWrite On
+            Cull Back
+
+            HLSLPROGRAM
+            #pragma target 3.5
+            #pragma vertex LitFresnelVertex
+            #pragma fragment LitFresnelFragment
+
+            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS
+            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS_CASCADE
+            #pragma multi_compile _ _ADDITIONAL_LIGHTS_VERTEX _ADDITIONAL_LIGHTS
+            #pragma multi_compile_fragment _ _ADDITIONAL_LIGHT_SHADOWS
+            #pragma multi_compile_fragment _ _SHADOWS_SOFT
+
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+
+            CBUFFER_START(UnityPerMaterial)
+                half4 _BaseColor;
+                half  _Metallic;
+                half  _Roughness;
+                half4 _RimColor;
+                half  _RimIntensity;
+                half  _RimPower;
+            CBUFFER_END
+
+            struct Attributes
+            {
+                float3 positionOS : POSITION;
+                float3 normalOS   : NORMAL;
+            };
+
+            struct Varyings
+            {
+                float4 positionCS : SV_POSITION;
+                float3 positionWS : TEXCOORD0;
+                half3  normalWS   : TEXCOORD1;
+            };
+
+            Varyings LitFresnelVertex(Attributes input)
+            {
+                Varyings output = (Varyings)0;
+                VertexPositionInputs position = GetVertexPositionInputs(input.positionOS);
+                output.positionCS = position.positionCS;
+                output.positionWS = position.positionWS;
+                output.normalWS   = TransformObjectToWorldNormal(input.normalOS);
+                return output;
+            }
+
+            half4 LitFresnelFragment(Varyings input) : SV_Target
+            {
+                half3 normalWS  = SafeNormalize(input.normalWS);
+                half3 viewDirWS = SafeNormalize(GetWorldSpaceNormalizeViewDir(input.positionWS));
+
+                half3 albedo    = _BaseColor.rgb;
+                half  metallic  = _Metallic;
+                half  smoothness = 1.0h - _Roughness;
+
+                half  alpha = _BaseColor.a;
+                BRDFData brdfData;
+                InitializeBRDFData(albedo, metallic, 0.0h, smoothness, alpha, brdfData);
+
+                uint pixelLightCount = GetAdditionalLightsCount();
+
+                float4 shadowCoord = TransformWorldToShadowCoord(input.positionWS);
+                Light mainLight = GetMainLight(shadowCoord);
+
+                half3 directDiffuse  = LightingLambert(mainLight.color * mainLight.shadowAttenuation, mainLight.direction, normalWS) * brdfData.diffuse;
+                half3 directSpecular = LightingSpecular(mainLight.color * mainLight.shadowAttenuation, mainLight.direction, normalWS, viewDirWS, half4(brdfData.specular, 1.0h), brdfData.perceptualRoughness);
+
+                LIGHT_LOOP_BEGIN(pixelLightCount)
+                    Light addLight = GetAdditionalLight(lightIndex, input.positionWS);
+                    directDiffuse  += LightingLambert(addLight.color * addLight.distanceAttenuation * addLight.shadowAttenuation, addLight.direction, normalWS) * brdfData.diffuse;
+                    directSpecular += LightingSpecular(addLight.color * addLight.distanceAttenuation * addLight.shadowAttenuation, addLight.direction, normalWS, viewDirWS, half4(brdfData.specular, 1.0h), brdfData.perceptualRoughness);
+                LIGHT_LOOP_END
+
+                half3 indirectDiffuse  = SampleSH(normalWS) * brdfData.diffuse;
+                half3 reflectVector    = reflect(-viewDirWS, normalWS);
+                half3 indirectSpecular = GlossyEnvironmentReflection(reflectVector, input.positionWS, brdfData.perceptualRoughness, 1.0h) * brdfData.specular;
+
+                half3 litColor = directDiffuse + directSpecular + indirectDiffuse + indirectSpecular;
+
+                half  fresnel   = pow(1.0h - saturate(dot(normalWS, viewDirWS)), _RimPower);
+                half3 rimEmission = _RimColor.rgb * (fresnel * _RimIntensity);
+
+                half3 finalColor = litColor + rimEmission;
+                return half4(finalColor, 1.0h);
+            }
+            ENDHLSL
+        }
+    }
+    Fallback "Hidden/Universal Render Pipeline/FallbackError"
+}

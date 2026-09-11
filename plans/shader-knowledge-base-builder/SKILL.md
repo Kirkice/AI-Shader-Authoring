@@ -225,7 +225,14 @@ relatedCapabilities
 
 ### D1. 枚举候选资产
 
-枚举项目内：
+枚举范围必须同时覆盖工程资产与包内资产，二者不得互为省略：
+
+```text
+Assets/          工程 Shader 与材质（owner: project）
+Packages/        包内 Shader 与材质（owner: package）
+```
+
+候选扩展名：
 
 ```text
 .shader
@@ -236,6 +243,10 @@ relatedCapabilities
 ```
 
 同时记录引用关系、同目录资产、材质引用的 Shader 和资产修改 revision。
+
+按 `owner` 分区标注来源：`Assets/` 记为 `project`，`Packages/` 记为 `package`。不得只凭 [`Packages/manifest.json`](../../Packages/manifest.json:1) 中出现某包就推断其 Shader 可用；必须实际枚举到文件并按 revision 记录。
+
+渲染管线包内的 Shader Library（例如 URP/HDRP Shader 目录）既是工程风格的对照基线，也是风格对齐类需求的样本来源；不纳入 `Packages/` 会导致样本语料与工程实际使用的关键字矩阵、`Attributes`/`Varyings` 约定脱节。
 
 ### D2. 提取每个 Shader 的结构卡片
 

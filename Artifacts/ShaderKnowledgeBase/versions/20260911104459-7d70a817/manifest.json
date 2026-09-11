@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1",
+  "freshnessStatus": "fresh",
+  "knowledgeBaseVersion": "20260911104459-7d70a817",
+  "manifestPath": "Artifacts/ShaderKnowledgeBase/versions/20260911104459-7d70a817/manifest.json",
+  "generatedAtUtc": "2026-09-11T10:45:00.1137337Z",
+  "environment": {
+    "unityVersion": "6000.5.4f1",
+    "renderPipeline": "UniversalRenderPipelineAsset",
+    "colorSpace": "Linear",
+    "graphicsDevice": "Direct3D12",
+    "packageLockFingerprint": "b97ef3718479a857f12af0bd06513602b0111af250339a86a5eb497981cffdb5"
+  },
+  "shaderCount": 140,
+  "libraryIncludeCount": 57,
+  "functionCardCount": 29,
+  "capabilityCount": 12
+}

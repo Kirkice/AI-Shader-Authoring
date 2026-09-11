@@ -1,0 +1,202 @@
+[
+  {
+    "term": "GetVertexPositionInputs",
+    "partition": "library",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl"
+  },
+  {
+    "term": "GetVertexNormalInputs",
+    "partition": "library",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl"
+  },
+  {
+    "term": "GetWorldSpaceViewDir",
+    "partition": "library",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl"
+  },
+  {
+    "term": "GetWorldSpaceNormalizeViewDir",
+    "partition": "library",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl"
+  },
+  {
+    "term": "SampleSHVertex",
+    "partition": "library",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/GlobalIllumination.hlsl"
+  },
+  {
+    "term": "SampleSHPixel",
+    "partition": "library",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/GlobalIllumination.hlsl"
+  },
+  {
+    "term": "ComputeFogFactor",
+    "partition": "library",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl"
+  },
+  {
+    "term": "GetCameraPositionWS",
+    "partition": "library",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl"
+  },
+  {
+    "term": "GetScaledScreenParams",
+    "partition": "library",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl"
+  },
+  {
+    "term": "GetMainLight",
+    "partition": "library",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RealtimeLights.hlsl"
+  },
+  {
+    "term": "GetAdditionalLightsCount",
+    "partition": "library",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RealtimeLights.hlsl"
+  },
+  {
+    "term": "GetAdditionalLight",
+    "partition": "library",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RealtimeLights.hlsl"
+  },
+  {
+    "term": "LightingLambert",
+    "partition": "library",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+  },
+  {
+    "term": "LightingSpecular",
+    "partition": "library",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+  },
+  {
+    "term": "LightingPhysicallyBased",
+    "partition": "library",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+  },
+  {
+    "term": "GlossyEnvironmentReflection",
+    "partition": "library",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/GlobalIllumination.hlsl"
+  },
+  {
+    "term": "InitializeBRDFData",
+    "partition": "library",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/BRDF.hlsl"
+  },
+  {
+    "term": "DirectBRDF",
+    "partition": "library",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/BRDF.hlsl"
+  },
+  {
+    "term": "DirectBRDFSpecular",
+    "partition": "library",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/BRDF.hlsl"
+  },
+  {
+    "term": "ReflectivitySpecular",
+    "partition": "library",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/BRDF.hlsl"
+  },
+  {
+    "term": "OneMinusReflectivityMetallic",
+    "partition": "library",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/BRDF.hlsl"
+  },
+  {
+    "term": "SampleAlbedoAlpha",
+    "partition": "library",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/SurfaceInput.hlsl"
+  },
+  {
+    "term": "AlphaDiscard",
+    "partition": "library",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl"
+  },
+  {
+    "term": "SampleNormal",
+    "partition": "library",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/SSAO.hlsl"
+  },
+  {
+    "term": "SampleEmission",
+    "partition": "library",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/SurfaceInput.hlsl"
+  },
+  {
+    "term": "MainLightRealtimeShadow",
+    "partition": "library",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl"
+  },
+  {
+    "term": "GetMainLightShadowParams",
+    "partition": "library",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl"
+  },
+  {
+    "term": "surface_parameters_metallic_roughness",
+    "partition": "capabilities",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/BRDF.hlsl"
+  },
+  {
+    "term": "direct_lighting_main",
+    "partition": "capabilities",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RealtimeLights.hlsl"
+  },
+  {
+    "term": "additional_lights_count",
+    "partition": "capabilities",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RealtimeLights.hlsl"
+  },
+  {
+    "term": "additional_light_fetch",
+    "partition": "capabilities",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RealtimeLights.hlsl"
+  },
+  {
+    "term": "indirect_diffuse_sh",
+    "partition": "capabilities",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl"
+  },
+  {
+    "term": "indirect_specular_reflection",
+    "partition": "capabilities",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/GlobalIllumination.hlsl"
+  },
+  {
+    "term": "world_normal_transform",
+    "partition": "capabilities",
+    "target": "Packages/com.unity.render-pipelines.core/ShaderLibrary/SpaceTransforms.hlsl"
+  },
+  {
+    "term": "view_direction_world_space",
+    "partition": "capabilities",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl"
+  },
+  {
+    "term": "vertex_position_inputs",
+    "partition": "capabilities",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl"
+  },
+  {
+    "term": "fresnel_rim_edge",
+    "partition": "capabilities",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl"
+  },
+  {
+    "term": "alpha_clip_discard",
+    "partition": "capabilities",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl"
+  },
+  {
+    "term": "surface_normal_sampling",
+    "partition": "capabilities",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/SSAO.hlsl"
+  },
+  {
+    "term": "shadow_sampling",
+    "partition": "capabilities",
+    "target": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl"
+  }
+]

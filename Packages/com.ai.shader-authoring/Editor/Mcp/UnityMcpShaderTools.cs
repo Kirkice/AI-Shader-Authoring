@@ -12,6 +12,7 @@ using UnityEditor.Rendering;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.SceneManagement;
 
 namespace UnityMcp.Editor
 {
@@ -25,6 +26,7 @@ namespace UnityMcp.Editor
         private const string KnowledgeRoot = "Artifacts/ShaderKnowledgeBase/";
         private const string RunsRoot = "Artifacts/ShaderRuns/";
         private static readonly Dictionary<string, JobRecord> Jobs = new Dictionary<string, JobRecord>();
+        private static readonly Dictionary<string, ValidationSessionRecord> ValidationSessions = new Dictionary<string, ValidationSessionRecord>();
         private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, IncludeFields = true, WriteIndented = true };
 
         internal static object Handle(string toolName, JsonElement args)
@@ -493,22 +495,546 @@ namespace UnityMcp.Editor
         private static object BuildKnowledgeBase(JsonElement args, JobRecord record)
         {
             var mode = GetString(args, "mode") ?? "full";
-            var version = DateTime.UtcNow.ToString("yyyyMMddHHmmss") + "-" + Hash(Application.unityVersion + AssetDatabase.GetAssetPath(GraphicsSettings.currentRenderPipeline)).Substring(0, 8);
+            var pipelineAssetPath = GraphicsSettings.currentRenderPipeline == null ? "builtin" : AssetDatabase.GetAssetPath(GraphicsSettings.currentRenderPipeline);
+            var packageLockPath = "Packages/packages-lock.json";
+            var packageLockFingerprint = File.Exists(packageLockPath) ? Revision(packageLockPath) : "no-package-lock";
+            var version = DateTime.UtcNow.ToString("yyyyMMddHHmmss") + "-" + Hash(Application.unityVersion + pipelineAssetPath + packageLockFingerprint).Substring(0, 8);
             var root = KnowledgeRoot + "versions/" + version + "/";
             Directory.CreateDirectory(root);
-            var shaderPaths = AssetDatabase.FindAssets("t:Shader").Select(AssetDatabase.GUIDToAssetPath).Where(path => path.StartsWith("Assets/", StringComparison.Ordinal)).ToArray();
-            var environment = new { unityVersion = Application.unityVersion, renderPipeline = GraphicsSettings.currentRenderPipeline == null ? "builtin" : GraphicsSettings.currentRenderPipeline.GetType().Name, colorSpace = PlayerSettings.colorSpace.ToString(), graphicsDevice = SystemInfo.graphicsDeviceType.ToString() };
+
+            // The corpus must cover package-provided shaders (URP/HDRP/custom SRP) as well as project assets.
+            var shaderPaths = AssetDatabase.FindAssets("t:Shader")
+                .Select(AssetDatabase.GUIDToAssetPath)
+                .Where(path => !string.IsNullOrEmpty(path) && (path.StartsWith("Assets/", StringComparison.Ordinal) || path.StartsWith("Packages/", StringComparison.Ordinal)))
+                .Distinct()
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+            var corpus = shaderPaths.Select(path => new
+            {
+                path,
+                sourceRevision = RevisionOfAsset(path),
+                shaderName = AssetDatabase.LoadAssetAtPath<Shader>(path)?.name,
+                origin = path.StartsWith("Packages/", StringComparison.Ordinal) ? "package" : "project"
+            }).ToArray();
+
+            var environment = new { unityVersion = Application.unityVersion, renderPipeline = GraphicsSettings.currentRenderPipeline == null ? "builtin" : GraphicsSettings.currentRenderPipeline.GetType().Name, colorSpace = PlayerSettings.colorSpace.ToString(), graphicsDevice = SystemInfo.graphicsDeviceType.ToString(), packageLockFingerprint };
             File.WriteAllText(root + "environment.json", JsonSerializer.Serialize(environment, JsonOptions));
-            File.WriteAllText(root + "shader-corpus.json", JsonSerializer.Serialize(shaderPaths.Select(path => new { path, sourceRevision = Revision(path), shaderName = AssetDatabase.LoadAssetAtPath<Shader>(path)?.name }), JsonOptions));
-            File.WriteAllText(root + "function-cards.json", "[]");
+            File.WriteAllText(root + "shader-corpus.json", JsonSerializer.Serialize(corpus, JsonOptions));
+
+            var libraryIndex = BuildLibraryIndex();
+            File.WriteAllText(root + "library-index.json", JsonSerializer.Serialize(libraryIndex, JsonOptions));
+
+            var libraryDeclarations = ExtractLibraryDeclarations();
+            var functionCards = BuildFunctionCards(libraryDeclarations);
+            File.WriteAllText(root + "function-cards.json", JsonSerializer.Serialize(functionCards, JsonOptions));
+
+            var capabilityCatalog = BuildCapabilityCatalog(libraryDeclarations);
+            File.WriteAllText(root + "capability-catalog.json", JsonSerializer.Serialize(capabilityCatalog, JsonOptions));
+
+            // Project-local conventions stay a separate partition so library facts are never mistaken for house style.
             File.WriteAllText(root + "project-conventions.json", "[]");
-            File.WriteAllText(root + "capability-catalog.json", "[]");
-            File.WriteAllText(root + "retrieval-index.json", "[]");
-            var manifest = new { schemaVersion = "1", freshnessStatus = "fresh", knowledgeBaseVersion = version, manifestPath = root + "manifest.json", generatedAtUtc = DateTime.UtcNow.ToString("o"), environment, shaderCount = shaderPaths.Length };
+
+            var retrievalIndex = functionCards.Select(card => new { term = card.function, partition = "library", target = card.include })
+                .Concat(capabilityCatalog.Select(item => new { term = item.capability, partition = "capabilities", target = item.include }))
+                .ToArray();
+            File.WriteAllText(root + "retrieval-index.json", JsonSerializer.Serialize(retrievalIndex, JsonOptions));
+
+            var supportedCapabilityCount = capabilityCatalog.Count(item => item.status == "supported");
+            var manifest = new { schemaVersion = "1", freshnessStatus = "fresh", knowledgeBaseVersion = version, manifestPath = root + "manifest.json", generatedAtUtc = DateTime.UtcNow.ToString("o"), environment, shaderCount = shaderPaths.Length, libraryIncludeCount = libraryIndex.Length, functionCardCount = functionCards.Length, capabilityCount = supportedCapabilityCount };
             File.WriteAllText(root + "manifest.json", JsonSerializer.Serialize(manifest, JsonOptions));
             File.WriteAllText(KnowledgeRoot + "current.json", JsonSerializer.Serialize(manifest, JsonOptions));
             record.artifacts.Add(root + "manifest.json");
-            return new { status = "fresh", knowledgeBaseVersion = version, buildMode = mode, manifestPath = root + "manifest.json", refreshedPartitions = new[] { "environment", "shader_corpus", "library", "conventions", "capabilities", "retrieval" }, coverageReport = new { shaderCount = shaderPaths.Length }, unresolvedItems = Array.Empty<string>(), recommendedNextAction = "Knowledge base is ready." };
+            return new
+            {
+                status = "fresh",
+                knowledgeBaseVersion = version,
+                buildMode = mode,
+                manifestPath = root + "manifest.json",
+                refreshedPartitions = new[] { "environment", "shader_corpus", "library", "conventions", "capabilities", "retrieval" },
+                coverageReport = new
+                {
+                    shaderCount = shaderPaths.Length,
+                    projectShaderCount = corpus.Count(item => item.origin == "project"),
+                    packageShaderCount = corpus.Count(item => item.origin == "package"),
+                    libraryIncludeCount = libraryIndex.Length,
+                    functionCardCount = functionCards.Length,
+                    capabilityCount = supportedCapabilityCount
+                },
+                unresolvedItems = Array.Empty<string>(),
+                recommendedNextAction = "Knowledge base is ready."
+            };
+        }
+
+        /// <summary>Universal Render Pipeline Shader Library root; its includes are the project's real PBR interface surface.</summary>
+        private const string UniversalLibraryRoot = "Packages/com.unity.render-pipelines.universal/ShaderLibrary/";
+
+        /// <summary>
+        /// Every package Shader Library root that participates in authoring. URP provides the material interfaces,
+        /// while the core package provides the shared transform and lighting helpers that URP re-exports.
+        /// </summary>
+        private static readonly string[] LibraryRoots = new[]
+        {
+            "Packages/com.unity.render-pipelines.core/ShaderLibrary/",
+            "Packages/com.unity.render-pipelines.universal/ShaderLibrary/"
+        };
+
+        /// <summary>Derives the owning package name from a logical "Packages/<name>/..." include path.</summary>
+        private static string PackageNameFromLogicalPath(string logicalPath)
+        {
+            if (string.IsNullOrEmpty(logicalPath) || !logicalPath.StartsWith("Packages/", StringComparison.Ordinal)) return "project";
+            var remainder = logicalPath.Substring("Packages/".Length);
+            var separator = remainder.IndexOf('/');
+            return separator < 0 ? remainder : remainder.Substring(0, separator);
+        }
+
+        /// <summary>
+        /// Maps a Unity asset path to a physical file path. Registry packages live under Library/PackageCache, so
+        /// their "Packages/..." asset paths are not readable through System.IO without this resolution.
+        /// </summary>
+        private static string ResolvePhysicalPath(string assetPath)
+        {
+            if (string.IsNullOrEmpty(assetPath)) return null;
+            var normalized = assetPath.Replace('\\', '/').TrimEnd('/');
+            if (!normalized.StartsWith("Packages/", StringComparison.Ordinal)) return normalized;
+            var info = UnityEditor.PackageManager.PackageInfo.FindForAssetPath(normalized);
+            if (info == null || string.IsNullOrEmpty(info.resolvedPath)) return null;
+            var resolved = info.resolvedPath.Replace('\\', '/');
+            var prefix = "Packages/" + info.name;
+            if (string.Equals(normalized, prefix, StringComparison.Ordinal)) return resolved;
+            return normalized.StartsWith(prefix + "/", StringComparison.Ordinal) ? resolved + normalized.Substring(prefix.Length) : resolved;
+        }
+
+        private static string RevisionOfAsset(string assetPath)
+        {
+            var physical = ResolvePhysicalPath(assetPath);
+            return !string.IsNullOrEmpty(physical) && File.Exists(physical) ? Revision(physical) : "absent";
+        }
+
+        /// <summary>Indexes every HLSL/CGINC include the package Shader Libraries expose, with revision evidence.</summary>
+        private static LibraryIncludeEntry[] BuildLibraryIndex()
+        {
+            var entries = new List<LibraryIncludeEntry>();
+            foreach (var source in EnumerateLibrarySourceFiles())
+            {
+                entries.Add(new LibraryIncludeEntry
+                {
+                    path = source.logicalPath,
+                    sourceRevision = Revision(source.physicalPath),
+                    kind = Path.GetExtension(source.physicalPath).TrimStart('.').ToLowerInvariant(),
+                    package = PackageNameFromLogicalPath(source.logicalPath)
+                });
+            }
+            return entries.ToArray();
+        }
+
+        /// <summary>URP Shader Library function tokens indexed by the knowledge base. Each one is resolved against real source.</summary>
+        private static readonly string[] FunctionTokens = new[]
+        {
+            "GetVertexPositionInputs", "GetVertexNormalInputs", "TransformObjectToWorld", "TransformObjectToWorldNormal", "TransformObjectToWorldDir",
+            "TransformWorldToObjectDir", "TransformWorldToView", "TransformWorldToHClip", "TransformObjectToHClip", "GetWorldSpaceViewDir",
+            "GetWorldSpaceNormalizeViewDir", "SafeNormalize", "SampleSH", "SampleSHVertex", "SampleSHPixel", "SampleSH9", "ComputeFogFactor",
+            "GetCameraPositionWS", "GetScaledScreenParams", "InitializeInputData", "GetMainLight", "GetAdditionalLightsCount", "GetAdditionalLight",
+            "GetAdditionalLights", "LightingLambert", "LightingSpecular", "LightingPhysicallyBased", "GlossyEnvironmentReflection", "InitializeBRDFData",
+            "DirectBRDF", "DirectBRDFSpecular", "SpecularStrength", "ReflectivitySpecular", "OneMinusReflectivityMetallic", "MinimalCookTorranceNoF0",
+            "SampleAlbedoAlpha", "AlphaDiscard", "SampleMetallicSpecGloss", "SampleNormal", "SampleEmission", "GetMainLightShadowCoord",
+            "MainLightRealtimeShadow", "GetMainLightShadowParams"
+        };
+
+        private sealed class LibrarySourceFile
+        {
+            public string logicalPath;
+            public string physicalPath;
+            public string fileName;
+        }
+
+        private sealed class DeclarationLocation
+        {
+            public string logicalPath;
+            public string fileName;
+            public int startLine;
+            public int endLine;
+            public string signature;
+            public string sourceRevision;
+        }
+
+        /// <summary>
+        /// Enumerates every package Shader Library source once, in a stable order, translating registry ("Packages/...")
+        /// asset paths to their physical PackageCache locations so their contents are actually readable.
+        /// </summary>
+        private static LibrarySourceFile[] EnumerateLibrarySourceFiles()
+        {
+            var results = new List<LibrarySourceFile>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var root in LibraryRoots)
+            {
+                var logicalRoot = root.TrimEnd('/');
+                // Resolve the folder itself: probing for a sentinel header is unsafe because each package
+                // exposes a different set (core has no Core.hlsl), which silently skipped whole roots.
+                var physicalRoot = ResolvePhysicalPath(logicalRoot);
+                if (string.IsNullOrEmpty(physicalRoot) || !Directory.Exists(physicalRoot)) continue;
+                var files = Directory.GetFiles(physicalRoot, "*.*", SearchOption.AllDirectories)
+                    .Where(file => file.EndsWith(".hlsl", StringComparison.OrdinalIgnoreCase) || file.EndsWith(".cginc", StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(file => file, StringComparer.Ordinal);
+                foreach (var file in files)
+                {
+                    var normalized = file.Replace('\\', '/');
+                    if (!normalized.StartsWith(physicalRoot, StringComparison.Ordinal)) continue;
+                    var logicalPath = logicalRoot + normalized.Substring(physicalRoot.Length);
+                    if (!seen.Add(logicalPath)) continue;
+                    results.Add(new LibrarySourceFile { logicalPath = logicalPath, physicalPath = normalized, fileName = Path.GetFileName(normalized) });
+                }
+            }
+            return results.OrderBy(source => source.logicalPath, StringComparer.Ordinal).ToArray();
+        }
+
+        /// <summary>
+        /// Preferred declaring include for tokens that would otherwise be ambiguous, because the same helper is either
+        /// re-declared across libraries or shadowed by an unrelated overload in another header.
+        /// </summary>
+        private static readonly Dictionary<string, string> PreferredTokenIncludes = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            { "TransformObjectToWorld", "Packages/com.unity.render-pipelines.core/ShaderLibrary/SpaceTransforms.hlsl" },
+            { "TransformObjectToWorldNormal", "Packages/com.unity.render-pipelines.core/ShaderLibrary/SpaceTransforms.hlsl" },
+            { "TransformObjectToWorldDir", "Packages/com.unity.render-pipelines.core/ShaderLibrary/SpaceTransforms.hlsl" },
+            { "TransformWorldToObjectDir", "Packages/com.unity.render-pipelines.core/ShaderLibrary/SpaceTransforms.hlsl" },
+            { "TransformWorldToView", "Packages/com.unity.render-pipelines.core/ShaderLibrary/SpaceTransforms.hlsl" },
+            { "TransformWorldToHClip", "Packages/com.unity.render-pipelines.core/ShaderLibrary/SpaceTransforms.hlsl" },
+            { "TransformObjectToHClip", "Packages/com.unity.render-pipelines.core/ShaderLibrary/SpaceTransforms.hlsl" },
+            { "SampleSH", "Packages/com.unity.render-pipelines.core/ShaderLibrary/EntityLighting.hlsl" },
+            { "SampleSH9", "Packages/com.unity.render-pipelines.core/ShaderLibrary/EntityLighting.hlsl" },
+            { "GetWorldSpaceViewDir", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl" },
+            { "GetWorldSpaceNormalizeViewDir", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl" },
+            { "GetCameraPositionWS", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl" },
+            { "ComputeFogFactor", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl" },
+            { "AlphaDiscard", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl" },
+            { "SampleNormal", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/SurfaceInput.hlsl" },
+            { "SampleAlbedoAlpha", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/SurfaceInput.hlsl" },
+            { "SampleMetallicSpecGloss", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/SurfaceInput.hlsl" },
+            { "SampleEmission", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/SurfaceInput.hlsl" },
+            { "InitializeBRDFData", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/BRDF.hlsl" },
+            { "GlossyEnvironmentReflection", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/GlobalIllumination.hlsl" },
+            { "MainLightRealtimeShadow", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RealtimeLights.hlsl" },
+            { "GetMainLight", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RealtimeLights.hlsl" },
+            { "GetAdditionalLightsCount", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RealtimeLights.hlsl" },
+            { "GetAdditionalLight", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RealtimeLights.hlsl" },
+            { "GetVertexPositionInputs", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl" },
+            { "GetVertexNormalInputs", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl" }
+        };
+
+        /// <summary>
+        /// Resolves every function and capability token against all package Shader Libraries. Each token is attributed to
+        /// the file that truly declares it, preferring the include the pipeline declares and, when that header does not
+        /// declare the token, falling back to the whole library rather than dropping the capability to "unknown".
+        /// </summary>
+        private static Dictionary<string, DeclarationLocation> ExtractLibraryDeclarations()
+        {
+            var wanted = new HashSet<string>(FunctionTokens, StringComparer.Ordinal);
+            foreach (var requirement in CapabilityRequirements) wanted.Add(requirement.function);
+            var sources = EnumerateLibrarySourceFiles();
+            var results = new Dictionary<string, DeclarationLocation>(StringComparer.Ordinal);
+            foreach (var token in wanted)
+            {
+                var preferred = PreferredIncludeForToken(token);
+                var location = LocateBestDeclaration(sources, token, preferred) ?? (preferred == null ? null : LocateBestDeclaration(sources, token, null));
+                if (location != null) results[token] = location;
+            }
+            return results;
+        }
+
+        /// <summary>Capability requirements are authoritative; the static table covers the remaining library tokens.</summary>
+        private static string PreferredIncludeForToken(string token)
+        {
+            foreach (var requirement in CapabilityRequirements)
+            {
+                if (string.Equals(requirement.function, token, StringComparison.Ordinal)) return requirement.include;
+            }
+            return PreferredTokenIncludes.TryGetValue(token, out var include) ? include : null;
+        }
+
+        private static DeclarationLocation LocateBestDeclaration(LibrarySourceFile[] sources, string token, string preferredInclude)
+        {
+            var preferredFileName = string.IsNullOrEmpty(preferredInclude) ? null : preferredInclude.Substring(preferredInclude.LastIndexOf('/') + 1);
+            DeclarationLocation best = null;
+            var bestScore = int.MaxValue;
+            foreach (var source in sources)
+            {
+                if (preferredFileName != null && !string.Equals(source.fileName, preferredFileName, StringComparison.OrdinalIgnoreCase)) continue;
+                var codeLines = BuildCodeLines(File.ReadAllLines(source.physicalPath));
+                if (!TryLocateDeclaration(codeLines, source.fileName, token, out var startLine, out var endLine, out var signature)) continue;
+                var score = CandidateScore(codeLines, source.fileName, startLine - 1, token);
+                if (score >= bestScore) continue;
+                bestScore = score;
+                best = new DeclarationLocation { logicalPath = source.logicalPath, fileName = source.fileName, startLine = startLine, endLine = endLine, signature = signature, sourceRevision = Revision(source.physicalPath) };
+            }
+            return best;
+        }
+
+        private static FunctionCard[] BuildFunctionCards(Dictionary<string, DeclarationLocation> declarations)
+        {
+            var cards = new List<FunctionCard>();
+            foreach (var token in FunctionTokens)
+            {
+                if (!declarations.TryGetValue(token, out var location)) continue;
+                cards.Add(new FunctionCard
+                {
+                    id = location.fileName + ":" + token,
+                    function = token,
+                    category = FunctionCategory(token),
+                    include = location.logicalPath,
+                    sourceFile = location.fileName,
+                    signature = location.signature,
+                    startLine = location.startLine,
+                    endLine = location.endLine,
+                    sourceRevision = location.sourceRevision,
+                    evidence = "Extracted from " + location.logicalPath + " line " + location.startLine + "."
+                });
+            }
+            return cards.ToArray();
+        }
+
+        /// <summary>
+        /// Removes line and block comments while preserving the line count, so declarations can be located by their real
+        /// line number without ever matching documentation prose or commented-out code.
+        /// </summary>
+        private static string[] BuildCodeLines(string[] lines)
+        {
+            var result = new string[lines.Length];
+            var inBlockComment = false;
+            for (var index = 0; index < lines.Length; index++)
+            {
+                var line = lines[index];
+                var builder = new StringBuilder(line.Length);
+                for (var cursor = 0; cursor < line.Length; cursor++)
+                {
+                    if (inBlockComment)
+                    {
+                        if (cursor + 1 < line.Length && line[cursor] == '*' && line[cursor + 1] == '/') { inBlockComment = false; cursor++; }
+                        continue;
+                    }
+                    if (cursor + 1 < line.Length && line[cursor] == '/' && line[cursor + 1] == '*') { inBlockComment = true; cursor++; continue; }
+                    if (cursor + 1 < line.Length && line[cursor] == '/' && line[cursor + 1] == '/') break;
+                    builder.Append(line[cursor]);
+                }
+                result[index] = builder.ToString();
+            }
+            return result;
+        }
+
+        /// <summary>Statement keywords that can never introduce a function declaration.</summary>
+        private static readonly string[] StatementKeywords = new[] { "return", "if", "else", "while", "for", "switch", "case", "do", "break", "continue", "using", "sizeof", "assert", "static_assert", "throw" };
+
+        /// <summary>
+        /// Finds the strongest declaration line for a token. Call sites, argument lists inside multi-line calls,
+        /// member accesses, forward declarations and preprocessor lines are all rejected so a capability is only ever
+        /// attributed to the file and line that truly declares it.
+        /// </summary>
+        private static bool TryLocateDeclaration(string[] codeLines, string fileName, string token, out int startLine, out int endLine, out string signature)
+        {
+            startLine = 0;
+            endLine = 0;
+            signature = null;
+            var bestIndex = -1;
+            var bestScore = int.MaxValue;
+            for (var index = 0; index < codeLines.Length; index++)
+            {
+                if (!IsDeclarationCandidate(codeLines, index, token)) continue;
+                var score = CandidateScore(codeLines, fileName, index, token);
+                if (score >= bestScore) continue;
+                bestScore = score;
+                bestIndex = index;
+            }
+            if (bestIndex < 0) return false;
+            startLine = bestIndex + 1;
+            signature = BuildSignature(codeLines, bestIndex, out endLine);
+            return true;
+        }
+
+        /// <summary>
+        /// A line can only introduce a declaration when the token stands alone and is preceded by a pure type prefix.
+        /// Expression syntax in the prefix ("if (dot(", "return half3(", "a = ") disqualifies the line, which is what
+        /// previously attributed capabilities to call sites.
+        /// </summary>
+        private static bool IsDeclarationCandidate(string[] codeLines, int index, string token)
+        {
+            var line = codeLines[index];
+            var tokenIndex = line.IndexOf(token, StringComparison.Ordinal);
+            if (tokenIndex < 0) return false;
+            if (line.TrimStart().StartsWith("#", StringComparison.Ordinal)) return false;
+
+            // A character glued to the token means the token is part of a longer name or a member access ("Foo.Bar(").
+            if (tokenIndex > 0)
+            {
+                var glued = line[tokenIndex - 1];
+                if (glued == '.' || glued == '>' || glued == '_' || char.IsLetterOrDigit(glued)) return false;
+            }
+
+            var after = tokenIndex + token.Length;
+            while (after < line.Length && char.IsWhiteSpace(line[after])) after++;
+            if (after >= line.Length || line[after] != '(') return false;
+
+            var prefix = line.Substring(0, tokenIndex);
+            if (prefix.IndexOf('(') >= 0 || prefix.IndexOf('=') >= 0 || prefix.IndexOf(';') >= 0 || prefix.IndexOf(',') >= 0 || prefix.IndexOf('"') >= 0 || prefix.IndexOf('.') >= 0) return false;
+            var hasIdentifier = false;
+            foreach (var character in prefix)
+            {
+                if (char.IsLetter(character) || character == '_') { hasIdentifier = true; continue; }
+                if (char.IsWhiteSpace(character) || char.IsDigit(character) || character == '*' || character == '&' || character == ':') continue;
+                return false;
+            }
+            if (!hasIdentifier) return false;
+            foreach (var keyword in StatementKeywords)
+            {
+                if (ContainsWord(prefix, keyword)) return false;
+            }
+            return true;
+        }
+
+        /// <summary>Word-boundary containment, so "returns" is never mistaken for the keyword "return".</summary>
+        private static bool ContainsWord(string text, string word)
+        {
+            var searchFrom = 0;
+            while (true)
+            {
+                var found = text.IndexOf(word, searchFrom, StringComparison.Ordinal);
+                if (found < 0) return false;
+                var beforeOk = found == 0 || !(char.IsLetterOrDigit(text[found - 1]) || text[found - 1] == '_');
+                var end = found + word.Length;
+                var afterOk = end >= text.Length || !(char.IsLetterOrDigit(text[end]) || text[end] == '_');
+                if (beforeOk && afterOk) return true;
+                searchFrom = found + 1;
+            }
+        }
+
+        /// <summary>
+        /// Ranks candidates so a real definition (a body that calls itself) beats a bare declaration, and a
+        /// non-deprecated header beats a compatibility shim.
+        /// </summary>
+        private static int CandidateScore(string[] codeLines, string fileName, int index, string token)
+        {
+            var score = 1;
+            for (var probe = index; probe < codeLines.Length && probe - index < 8; probe++)
+            {
+                if (codeLines[probe].IndexOf('{') >= 0)
+                {
+                    var body = new StringBuilder();
+                    for (var inner = probe; inner < codeLines.Length && inner - probe < 24; inner++) body.Append(codeLines[inner]);
+                    if (body.ToString().IndexOf(token, StringComparison.Ordinal) >= 0) score = 0;
+                    break;
+                }
+                if (codeLines[probe].IndexOf(';') >= 0) break;
+            }
+            if (fileName.IndexOf("deprecated", StringComparison.OrdinalIgnoreCase) >= 0) score += 4;
+            return score;
+        }
+
+        private static string BuildSignature(string[] codeLines, int index, out int endLine)
+        {
+            var builder = new StringBuilder(codeLines[index].Trim());
+            var last = index;
+            while (builder.ToString().IndexOf(')') < 0 && last + 1 < codeLines.Length && last - index < 8)
+            {
+                last++;
+                builder.Append(' ').Append(codeLines[last].Trim());
+            }
+            endLine = last + 1;
+            var text = builder.ToString();
+            var braceIndex = text.IndexOf('{');
+            return braceIndex >= 0 ? text.Substring(0, braceIndex).TrimEnd() : text;
+        }
+
+        private static string FunctionCategory(string token)
+        {
+            if (token.IndexOf("BRDF", StringComparison.OrdinalIgnoreCase) >= 0 || token.IndexOf("Specular", StringComparison.OrdinalIgnoreCase) >= 0 || token.IndexOf("Reflectivity", StringComparison.OrdinalIgnoreCase) >= 0 || token.IndexOf("CookTorrance", StringComparison.OrdinalIgnoreCase) >= 0) return "brdf";
+            if (token.IndexOf("Shadow", StringComparison.OrdinalIgnoreCase) >= 0) return "shadows";
+            if (token.IndexOf("Light", StringComparison.OrdinalIgnoreCase) >= 0) return "lighting";
+            if (token.IndexOf("Transform", StringComparison.OrdinalIgnoreCase) >= 0 || token.IndexOf("Position", StringComparison.OrdinalIgnoreCase) >= 0 || token.IndexOf("Normal", StringComparison.OrdinalIgnoreCase) >= 0 || token.IndexOf("ViewDir", StringComparison.OrdinalIgnoreCase) >= 0) return "transform";
+            if (token.IndexOf("SampleSH", StringComparison.OrdinalIgnoreCase) >= 0 || token.IndexOf("GlossyEnvironment", StringComparison.OrdinalIgnoreCase) >= 0) return "indirect_lighting";
+            if (token.IndexOf("Alpha", StringComparison.OrdinalIgnoreCase) >= 0) return "alpha";
+            if (token.StartsWith("Sample", StringComparison.OrdinalIgnoreCase)) return "surface_sampling";
+            return "core";
+        }
+
+        /// <summary>Capabilities required by the material pipeline, each proven only by real library evidence.</summary>
+        private static readonly CapabilityRequirement[] CapabilityRequirements = new[]
+        {
+            new CapabilityRequirement { capability = "surface_parameters_metallic_roughness", include = "BRDF.hlsl", function = "InitializeBRDFData", note = "Metallic-Roughness SurfaceParameters 构建入口。" },
+            new CapabilityRequirement { capability = "direct_lighting_main", include = "RealtimeLights.hlsl", function = "GetMainLight", note = "主方向光结构体接口。" },
+            new CapabilityRequirement { capability = "additional_lights_count", include = "RealtimeLights.hlsl", function = "GetAdditionalLightsCount", note = "附加光数量接口。" },
+            new CapabilityRequirement { capability = "additional_light_fetch", include = "RealtimeLights.hlsl", function = "GetAdditionalLight", note = "附加光逐个获取接口。" },
+            new CapabilityRequirement { capability = "indirect_diffuse_sh", include = "Packages/com.unity.render-pipelines.core/ShaderLibrary/EntityLighting.hlsl", function = "SampleSH", note = "球谐环境漫反射；声明位于 core 包，URP 通过 include 链转发。" },
+            new CapabilityRequirement { capability = "indirect_specular_reflection", include = "GlobalIllumination.hlsl", function = "GlossyEnvironmentReflection", note = "反射探针/IBL 镜面环境光；实际效果仍取决于场景探针。" },
+            new CapabilityRequirement { capability = "world_normal_transform", include = "Packages/com.unity.render-pipelines.core/ShaderLibrary/SpaceTransforms.hlsl", function = "TransformObjectToWorldNormal", note = "世界空间法线；该接口位于 core 包而非 URP Shader Library，扫描范围外时保持 unknown 而不是臆断。" },
+            new CapabilityRequirement { capability = "view_direction_world_space", include = "ShaderVariablesFunctions.hlsl", function = "GetWorldSpaceNormalizeViewDir", note = "世界空间归一化视线方向。" },
+            new CapabilityRequirement { capability = "vertex_position_inputs", include = "ShaderVariablesFunctions.hlsl", function = "GetVertexPositionInputs", note = "顶点位置多空间变换。" },
+            new CapabilityRequirement { capability = "fresnel_rim_edge", include = "ShaderVariablesFunctions.hlsl", function = "GetWorldSpaceNormalizeViewDir", note = "菲涅尔边缘光依赖世界法线与视线方向；边缘因子为艺术化叠加项，不替代 BRDF 中的物理 Fresnel。" },
+            new CapabilityRequirement { capability = "alpha_clip_discard", include = "SurfaceInput.hlsl", function = "AlphaDiscard", note = "Alpha Clip 片元裁剪。" },
+            new CapabilityRequirement { capability = "surface_normal_sampling", include = "SurfaceInput.hlsl", function = "SampleNormal", note = "法线贴图采样。" },
+            new CapabilityRequirement { capability = "shadow_sampling", include = "RealtimeLights.hlsl", function = "MainLightRealtimeShadow", note = "主光实时阴影采样。" }
+        };
+
+        private static CapabilityCatalogEntry[] BuildCapabilityCatalog(Dictionary<string, DeclarationLocation> declarations)
+        {
+            var results = new List<CapabilityCatalogEntry>();
+            foreach (var requirement in CapabilityRequirements)
+            {
+                var found = declarations.TryGetValue(requirement.function, out var location);
+                results.Add(new CapabilityCatalogEntry
+                {
+                    capability = requirement.capability,
+                    status = found ? "supported" : "unknown",
+                    include = found ? location.logicalPath : (requirement.include.StartsWith("Packages/", StringComparison.Ordinal) ? requirement.include : UniversalLibraryRoot + requirement.include),
+                    function = requirement.function,
+                    sourceLocation = found ? location.startLine + "-" + location.endLine : null,
+                    signature = found ? location.signature : null,
+                    confidence = found ? "high" : "unknown",
+                    evidence = found ? "Resolved from " + location.logicalPath + " (" + requirement.function + ", line " + location.startLine + ")." : "Not found in any scanned package Shader Library (" + requirement.function + "); the capability stays unknown rather than assumed.",
+                    note = requirement.note
+                });
+            }
+            return results.ToArray();
+        }
+
+        private sealed class LibraryIncludeEntry
+        {
+            public string path { get; set; }
+            public string sourceRevision { get; set; }
+            public string kind { get; set; }
+            public string package { get; set; }
+        }
+
+        private sealed class FunctionCard
+        {
+            public string id { get; set; }
+            public string function { get; set; }
+            public string category { get; set; }
+            public string include { get; set; }
+            public string sourceFile { get; set; }
+            public string signature { get; set; }
+            public int startLine { get; set; }
+            public int endLine { get; set; }
+            public string sourceRevision { get; set; }
+            public string evidence { get; set; }
+        }
+
+        private sealed class CapabilityCatalogEntry
+        {
+            public string capability { get; set; }
+            public string status { get; set; }
+            public string include { get; set; }
+            public string function { get; set; }
+            public string sourceLocation { get; set; }
+            public string signature { get; set; }
+            public string confidence { get; set; }
+            public string evidence { get; set; }
+            public string note { get; set; }
+        }
+
+        private sealed class CapabilityRequirement
+        {
+            public string capability;
+            public string include;
+            public string function;
+            public string note;
         }
 
         /// <summary>
@@ -562,18 +1088,160 @@ namespace UnityMcp.Editor
 
         private static object EnsureValidationScene(JsonElement args, JobRecord record)
         {
+            var profile = RequireProperty(args, "validationProfile");
+            var target = RequireProperty(args, "target");
+            var scenePath = RequireString(profile, "scenePath");
+            var cameraPath = RequireString(profile, "cameraPath");
+            var targetPath = RequireString(target, "objectPath");
+            var materialPath = RequireString(target, "materialPath");
+            RequireReadPath(scenePath);
+            RequireReadPath(materialPath);
+            if (!scenePath.EndsWith(".unity", StringComparison.OrdinalIgnoreCase) || !File.Exists(scenePath)) throw new ArgumentException("validationProfile.scenePath must reference an existing Unity scene.");
+            if (!materialPath.EndsWith(".mat", StringComparison.OrdinalIgnoreCase) || AssetDatabase.LoadAssetAtPath<Material>(materialPath) == null) throw new ArgumentException("target.materialPath must reference a loadable Material asset.");
+            if (string.IsNullOrWhiteSpace(targetPath) || string.IsNullOrWhiteSpace(cameraPath)) throw new ArgumentException("Validation target and camera paths are required.");
+
             var sessionId = Guid.NewGuid().ToString("N");
-            var path = WriteRunArtifact(args, "validation/" + sessionId + "/session-manifest.json", JsonSerializer.Serialize(new { sessionId, createdAtUtc = DateTime.UtcNow.ToString("o"), profile = GetString(args, "profileId") ?? "pbr_sphere_baseline", note = "Isolated validation session metadata. Scene mutation is intentionally not performed by the first safe host implementation." }, JsonOptions));
+            var session = new ValidationSessionRecord
+            {
+                sessionId = sessionId,
+                scenePath = scenePath,
+                cameraPath = cameraPath,
+                targetPath = targetPath,
+                materialPath = materialPath,
+                width = GetInt(profile, "width", 1024, 64, 4096),
+                height = GetInt(profile, "height", 1024, 64, 4096),
+                minAverageLuminance = GetFloat(profile, "minAverageLuminance", 0f, 0f, 1f),
+                minNonBackgroundRatio = GetFloat(profile, "minNonBackgroundRatio", 0f, 0f, 1f),
+                createdAtUtc = DateTime.UtcNow.ToString("o")
+            };
+            ValidationSessions[sessionId] = session;
+            var path = WriteRunArtifact(args, "validation/" + sessionId + "/session-manifest.json", JsonSerializer.Serialize(new
+            {
+                sessionId,
+                createdAtUtc = session.createdAtUtc,
+                validationScene = new { scenePath, cameraPath, width = session.width, height = session.height },
+                target = new { objectPath = targetPath, materialPath },
+                criteria = new { session.minAverageLuminance, session.minNonBackgroundRatio },
+                sceneMutation = "The scene is opened additively, the material is restored after capture, and the scene is never saved."
+            }, JsonOptions));
             record.artifacts.Add(path);
-            return new { validationSessionId = sessionId, manifest = new { path, contentHash = Hash(File.ReadAllText(path)) }, status = "passed" };
+            return new { validationSessionId = sessionId, manifest = new { path, contentHash = Hash(File.ReadAllText(path)) }, status = "ready", validationScene = new { scenePath, cameraPath }, target = new { objectPath = targetPath, materialPath } };
         }
 
         private static object CaptureValidation(JsonElement args, JobRecord record)
         {
-            var session = RequireString(args, "validationSessionId");
-            var path = WriteRunArtifact(args, "validation/" + session + "/captures/capture-request.json", args.GetRawText());
-            record.artifacts.Add(path);
-            return new { status = "blocked", validationSessionId = session, reason = "Deterministic render capture requires a configured validation camera and is intentionally not faked by the safe host.", evidenceRefs = new[] { new { path } } };
+            var sessionId = RequireString(args, "validationSessionId");
+            if (!ValidationSessions.TryGetValue(sessionId, out var session)) throw new ArgumentException("Unknown validationSessionId. Validation sessions are invalidated by a Unity domain reload; create a new session.");
+            var scene = EditorSceneManager.OpenScene(session.scenePath, OpenSceneMode.Additive);
+            var previousActiveScene = EditorSceneManager.GetActiveScene();
+            Material[] originalMaterials = null;
+            RenderTexture renderTexture = null;
+            Texture2D image = null;
+            try
+            {
+                var targetObject = FindGameObject(scene, session.targetPath) ?? throw new ArgumentException("Validation target was not found in scene: " + session.targetPath);
+                var renderer = targetObject.GetComponent<Renderer>() ?? throw new ArgumentException("Validation target has no Renderer: " + session.targetPath);
+                var cameraObject = FindGameObject(scene, session.cameraPath) ?? throw new ArgumentException("Validation camera was not found in scene: " + session.cameraPath);
+                var camera = cameraObject.GetComponent<Camera>() ?? throw new ArgumentException("Validation camera has no Camera component: " + session.cameraPath);
+                var material = AssetDatabase.LoadAssetAtPath<Material>(session.materialPath) ?? throw new ArgumentException("Validation material could not be loaded: " + session.materialPath);
+
+                originalMaterials = renderer.sharedMaterials;
+                var assignedMaterials = new Material[Math.Max(1, originalMaterials.Length)];
+                for (var index = 0; index < assignedMaterials.Length; index++) assignedMaterials[index] = material;
+                renderer.sharedMaterials = assignedMaterials;
+                EditorSceneManager.SetActiveScene(scene);
+
+                renderTexture = RenderTexture.GetTemporary(session.width, session.height, 24, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+                var originalTarget = camera.targetTexture;
+                var originalActive = RenderTexture.active;
+                try
+                {
+                    camera.targetTexture = renderTexture;
+                    camera.Render();
+                    RenderTexture.active = renderTexture;
+                    image = new Texture2D(session.width, session.height, TextureFormat.RGBA32, false, false);
+                    image.ReadPixels(new Rect(0, 0, session.width, session.height), 0, 0, false);
+                    image.Apply(false, false);
+                }
+                finally
+                {
+                    camera.targetTexture = originalTarget;
+                    RenderTexture.active = originalActive;
+                }
+
+                var pixels = image.GetPixels32();
+                // Use a corner sample from the actual capture rather than camera.backgroundColor: skyboxes
+                // and post-processing can make the rendered background differ from the camera clear color.
+                var statistics = CalculateImageStatistics(pixels, session.width, session.height, pixels.Length > 0 ? (Color)pixels[0] : Color.clear);
+                var pngPath = RunsRoot + (TryGetRunId(args) ?? "unscoped") + "/validation/" + sessionId + "/captures/material-validation.png";
+                Directory.CreateDirectory(Path.GetDirectoryName(pngPath) ?? RunsRoot);
+                File.WriteAllBytes(pngPath, image.EncodeToPNG());
+                var hasVisibleContent = statistics.nonBackgroundRatio >= session.minNonBackgroundRatio;
+                var hasRequiredLuminance = statistics.averageLuminance >= session.minAverageLuminance;
+                var decision = hasVisibleContent && hasRequiredLuminance ? "pass" : "revise";
+                var reportPath = WriteRunArtifact(args, "validation/" + sessionId + "/captures/validation-report.json", JsonSerializer.Serialize(new
+                {
+                    decision,
+                    capturedAtUtc = DateTime.UtcNow.ToString("o"),
+                    validationScene = new { session.scenePath, session.cameraPath },
+                    target = new { session.targetPath, session.materialPath },
+                    capture = new { pngPath, contentHash = Hash(File.ReadAllBytes(pngPath)), width = session.width, height = session.height },
+                    statistics,
+                    criteria = new { session.minAverageLuminance, session.minNonBackgroundRatio },
+                    automaticDecisionScope = "Pixel thresholds only establish non-empty render evidence. Visual compliance with the requested material intent requires screenshot review."
+                }, JsonOptions));
+                record.artifacts.Add(pngPath);
+                record.artifacts.Add(reportPath);
+                return new { status = decision == "pass" ? "passed" : "revise", decision, validationSessionId = sessionId, screenshot = new { path = pngPath, contentHash = Hash(File.ReadAllBytes(pngPath)), width = session.width, height = session.height }, statistics, report = new { path = reportPath, contentHash = Hash(File.ReadAllText(reportPath)) } };
+            }
+            finally
+            {
+                if (originalMaterials != null)
+                {
+                    var targetObject = FindGameObject(scene, session.targetPath);
+                    var renderer = targetObject == null ? null : targetObject.GetComponent<Renderer>();
+                    if (renderer != null) renderer.sharedMaterials = originalMaterials;
+                }
+                if (image != null) UnityEngine.Object.DestroyImmediate(image);
+                if (renderTexture != null) RenderTexture.ReleaseTemporary(renderTexture);
+                if (scene.IsValid()) EditorSceneManager.CloseScene(scene, true);
+                if (previousActiveScene.IsValid() && previousActiveScene.isLoaded) EditorSceneManager.SetActiveScene(previousActiveScene);
+            }
+        }
+
+        private static GameObject FindGameObject(Scene scene, string hierarchyPath)
+        {
+            var segments = hierarchyPath.Trim('/').Split('/');
+            if (segments.Length == 0 || string.IsNullOrEmpty(segments[0])) return null;
+            var current = scene.GetRootGameObjects().FirstOrDefault(root => string.Equals(root.name, segments[0], StringComparison.Ordinal));
+            for (var index = 1; current != null && index < segments.Length; index++) current = current.transform.Find(segments[index])?.gameObject;
+            return current;
+        }
+
+        private static ImageStatistics CalculateImageStatistics(Color32[] pixels, int width, int height, Color background)
+        {
+            var backgroundColor = (Color32)background;
+            long red = 0, green = 0, blue = 0;
+            var nonBackgroundCount = 0;
+            foreach (var pixel in pixels)
+            {
+                red += pixel.r;
+                green += pixel.g;
+                blue += pixel.b;
+                if (Math.Abs(pixel.r - backgroundColor.r) > 4 || Math.Abs(pixel.g - backgroundColor.g) > 4 || Math.Abs(pixel.b - backgroundColor.b) > 4) nonBackgroundCount++;
+            }
+            var count = Math.Max(1, pixels.Length);
+            var averageRed = red / (255f * count);
+            var averageGreen = green / (255f * count);
+            var averageBlue = blue / (255f * count);
+            return new ImageStatistics
+            {
+                width = width,
+                height = height,
+                averageColor = new ColorStatistics { r = averageRed, g = averageGreen, b = averageBlue },
+                averageLuminance = 0.2126f * averageRed + 0.7152f * averageGreen + 0.0722f * averageBlue,
+                nonBackgroundRatio = nonBackgroundCount / (float)count
+            };
         }
 
         private static object CreateCheckpoint(JsonElement args, JobRecord record)
@@ -605,7 +1273,8 @@ namespace UnityMcp.Editor
         private static string WriteRunArtifact(JsonElement args, string relative, string content) { var runId = TryGetRunId(args) ?? "unscoped"; var path = RunsRoot + runId + "/" + relative; Directory.CreateDirectory(Path.GetDirectoryName(path) ?? RunsRoot); File.WriteAllText(path, content, new UTF8Encoding(false)); return path; }
         private static string TryGetRunId(JsonElement args) { if (args.TryGetProperty("operationContext", out var context)) return GetString(context, "runId"); return GetString(args, "runId"); }
         private static string Revision(string path) => Hash(File.ReadAllText(path));
-        private static string Hash(string text) { using var sha = SHA256.Create(); return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(text))).Replace("-", "").ToLowerInvariant(); }
+        private static string Hash(string text) => Hash(Encoding.UTF8.GetBytes(text));
+        private static string Hash(byte[] bytes) { using var sha = SHA256.Create(); return BitConverter.ToString(sha.ComputeHash(bytes)).Replace("-", "").ToLowerInvariant(); }
         private static string SafeName(string path) => path.Replace('/', '_').Replace('\\', '_').Replace(':', '_');
         private static bool IsGeneratedPath(string path) => path.Replace('\\', '/').StartsWith(GeneratedRoot, StringComparison.Ordinal);
         private static bool IsArtifactPath(string path) { var normalized = path.Replace('\\', '/'); return normalized.StartsWith(KnowledgeRoot, StringComparison.Ordinal) || normalized.StartsWith(RunsRoot, StringComparison.Ordinal); }
@@ -624,6 +1293,16 @@ namespace UnityMcp.Editor
         private static JsonElement RequireProperty(JsonElement element, string name) { if (!element.TryGetProperty(name, out var value)) throw new ArgumentException("Missing required property: " + name); return value; }
         private static string RequireString(JsonElement element, string name) => GetString(element, name) ?? throw new ArgumentException("Missing required string: " + name);
         private static string GetString(JsonElement element, string name) => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+        private static int GetInt(JsonElement element, string name, int fallback, int minimum, int maximum)
+        {
+            if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out var parsed)) return fallback;
+            return Math.Max(minimum, Math.Min(maximum, parsed));
+        }
+        private static float GetFloat(JsonElement element, string name, float fallback, float minimum, float maximum)
+        {
+            if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.Number || !value.TryGetSingle(out var parsed)) return fallback;
+            return Mathf.Clamp(parsed, minimum, maximum);
+        }
         private static string[] GetStringArray(JsonElement element, string name) => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Array ? value.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.String).Select(item => item.GetString()).Where(item => !string.IsNullOrEmpty(item)).ToArray() : Array.Empty<string>();
         private static object ParseStoredJson(string json)
         {
@@ -633,6 +1312,37 @@ namespace UnityMcp.Editor
         }
 
         [Serializable] private sealed class JobRecord { public string jobId; public string jobType; public string status; public string createdAtUtc; public string completedAtUtc; public string argsJson; public string contextJson; public string resultJson; public string error; public readonly List<string> artifacts = new List<string>(); }
+
+        /// <summary>In-memory validation capture state. It is intentionally discarded by a Unity domain reload.</summary>
+        private sealed class ValidationSessionRecord
+        {
+            public string sessionId;
+            public string scenePath;
+            public string cameraPath;
+            public string targetPath;
+            public string materialPath;
+            public int width;
+            public int height;
+            public float minAverageLuminance;
+            public float minNonBackgroundRatio;
+            public string createdAtUtc;
+        }
+
+        private sealed class ColorStatistics
+        {
+            public float r;
+            public float g;
+            public float b;
+        }
+
+        private sealed class ImageStatistics
+        {
+            public int width;
+            public int height;
+            public ColorStatistics averageColor;
+            public float averageLuminance;
+            public float nonBackgroundRatio;
+        }
 
         /// <summary>Internal carrier for a single Shader's live compile state plus its serialized payload.</summary>
         private sealed class ShaderScanResult
