@@ -41,12 +41,19 @@ class UnityMCPServer {
   private logBuffer: LogEntry[] = [];
   private readonly maxLogBufferSize = 1000;
   
-  // Add command result promise handling
+  // Legacy arbitrary-command response handling.
   private commandResultPromise: {
     resolve: (value: any) => void;
     reject: (reason?: any) => void;
   } | null = null;
   private commandStartTime: number | null = null;
+
+  // Structured tool calls are serialized because Unity Editor work must run on its main thread.
+  private structuredToolResultPromise: {
+    resolve: (value: any) => void;
+    reject: (reason?: any) => void;
+  } | null = null;
+  private structuredToolBusy = false;
 
   constructor() {
     // Initialize MCP Server
@@ -107,6 +114,11 @@ class UnityMCPServer {
       ws.on('close', () => {
         console.error('[Unity MCP] Unity Editor disconnected');
         this.unityConnection = null;
+        if (this.structuredToolResultPromise) {
+          this.structuredToolResultPromise.reject(new Error('Unity Editor disconnected while a structured tool was executing.'));
+          this.structuredToolResultPromise = null;
+          this.structuredToolBusy = false;
+        }
       });
     });
   }
@@ -142,6 +154,14 @@ class UnityMCPServer {
         if (this.commandResultPromise) {
           this.commandResultPromise.resolve(message.data);
           this.commandResultPromise = null;
+        }
+        break;
+
+      case 'structuredToolResult':
+        if (this.structuredToolResultPromise) {
+          this.structuredToolResultPromise.resolve(message.data);
+          this.structuredToolResultPromise = null;
+          this.structuredToolBusy = false;
         }
         break;
 
@@ -330,6 +350,7 @@ class UnityMCPServer {
             }
           ]
         },
+        ...this.getStructuredTools(),
       ],
     }));
 
@@ -345,13 +366,18 @@ class UnityMCPServer {
 
       const { name, arguments: args } = request.params;
 
-      // Validate tool exists with helpful error message
-      const availableTools = ['get_editor_state', 'execute_editor_command', 'get_logs'];
+      // Validate tool exists with helpful error message.
+      const availableTools = ['get_editor_state', 'execute_editor_command', 'get_logs', ...this.getStructuredToolNames()];
       if (!availableTools.includes(name)) {
         throw new McpError(
           ErrorCode.MethodNotFound,
           `Unknown tool: ${name}. Available tools are: ${availableTools.join(', ')}`
         );
+      }
+
+      // Structured operations use a typed Unity-side allow-list and never compile arbitrary C#.
+      if (this.getStructuredToolNames().includes(name)) {
+        return this.callStructuredTool(name, args ?? {});
       }
 
       // Validate arguments based on tool schemas
@@ -450,10 +476,23 @@ class UnityMCPServer {
               )
             ]);
 
+            const commandResult = result as {
+              executionSuccess?: boolean;
+              errorDetails?: { message?: string };
+              errors?: string[];
+            };
+            if (!commandResult.executionSuccess) {
+              throw new Error(
+                commandResult.errorDetails?.message
+                ?? commandResult.errors?.join('\n')
+                ?? 'Unity Editor command failed.'
+              );
+            }
+
             // Get logs that occurred during command execution
             const commandLogs = this.logBuffer
               .slice(startLogIndex)
-              .filter(log => log.message.includes('[UnityMCP]'));
+              .filter(log => (log.message ?? '').includes('[UnityMCP]'));
 
             // Calculate execution time
             const executionTime = Date.now() - this.commandStartTime;
@@ -536,6 +575,75 @@ class UnityMCPServer {
     });
   }
 
+  private getStructuredToolNames(): string[] {
+    return [
+      'run_unity_job', 'get_unity_job', 'cancel_unity_job',
+      'get_shader_knowledge_base_status', 'build_shader_knowledge_base', 'query_shader_knowledge_base',
+      'inspect_shader_structure', 'get_asset_revision', 'write_generated_text_asset',
+      'refresh_and_compile_assets', 'ensure_validation_scene', 'capture_validation',
+      'create_shader_checkpoint', 'restore_shader_checkpoint'
+    ];
+  }
+
+  private getStructuredTools(): any[] {
+    const jobContext = {
+      type: 'object',
+      properties: {
+        operationContext: { type: 'object', description: 'Audit context containing runId, skill, codePlanId, and optional authorizationGrantId.' },
+        idempotencyKey: { type: 'string' }
+      },
+      additionalProperties: true
+    };
+    return [
+      { name: 'run_unity_job', description: 'Start an allow-listed asynchronous Unity job. Never accepts C# source.', category: 'Shader Jobs', inputSchema: { ...jobContext, properties: { ...jobContext.properties, jobType: { type: 'string', enum: ['build_shader_knowledge_base', 'refresh_and_compile_assets', 'ensure_validation_scene', 'capture_validation', 'create_shader_checkpoint'] }, args: { type: 'object' } }, required: ['jobType'] } },
+      { name: 'get_unity_job', description: 'Read status and artifacts for an asynchronous Unity job.', category: 'Shader Jobs', inputSchema: { type: 'object', properties: { jobId: { type: 'string' } }, required: ['jobId'], additionalProperties: false } },
+      { name: 'cancel_unity_job', description: 'Cancel a queued structured Unity job.', category: 'Shader Jobs', inputSchema: { type: 'object', properties: { jobId: { type: 'string' }, reason: { type: 'string' } }, required: ['jobId'], additionalProperties: false } },
+      { name: 'get_shader_knowledge_base_status', description: 'Read persistent project Shader Knowledge Base freshness and version.', category: 'Shader Knowledge', inputSchema: { type: 'object', properties: { expectedSchemaVersion: { type: 'string' } }, additionalProperties: false } },
+      { name: 'build_shader_knowledge_base', description: 'Queue a full or incremental project Shader Knowledge Base build.', category: 'Shader Knowledge', inputSchema: { ...jobContext, properties: { ...jobContext.properties, mode: { type: 'string', enum: ['full', 'incremental'] }, reason: { type: 'string' } }, required: ['mode'] } },
+      { name: 'query_shader_knowledge_base', description: 'Retrieve persisted Shader examples, function cards and capabilities.', category: 'Shader Knowledge', inputSchema: { type: 'object', properties: { knowledgeBaseVersion: { type: 'string' }, query: { type: 'object' } }, additionalProperties: true } },
+      { name: 'inspect_shader_structure', description: 'Read a Shader asset into structured properties, passes, entries, includes and render states.', category: 'Shader Analysis', inputSchema: { type: 'object', properties: { assetPath: { type: 'string' }, expectedRevision: { type: 'string' } }, required: ['assetPath'], additionalProperties: true } },
+      { name: 'get_asset_revision', description: 'Read content revisions for project-relative assets.', category: 'Shader Analysis', inputSchema: { type: 'object', properties: { assetPaths: { type: 'array', items: { type: 'string' } } }, required: ['assetPaths'], additionalProperties: false } },
+      { name: 'write_generated_text_asset', description: 'Write one revision-protected generated text asset under Assets/AIShader/Generated only.', category: 'Shader Assets', inputSchema: { ...jobContext, properties: { ...jobContext.properties, asset: { type: 'object', properties: { path: { type: 'string' }, contentUtf8: { type: 'string' }, baseRevision: { type: 'string' }, createPolicy: { type: 'string', enum: ['create_only', 'update_only', 'create_or_update'] } }, required: ['path', 'contentUtf8', 'baseRevision'] }, codePlan: { type: 'object' } }, required: ['asset', 'codePlan'] } },
+      { name: 'refresh_and_compile_assets', description: 'Queue refresh and import for specified assets, returning structured compile evidence.', category: 'Shader Validation', inputSchema: { ...jobContext, properties: { ...jobContext.properties, assetPaths: { type: 'array', items: { type: 'string' } } }, required: ['assetPaths'] } },
+      { name: 'ensure_validation_scene', description: 'Queue isolated deterministic validation-session setup.', category: 'Shader Validation', inputSchema: { ...jobContext, properties: { ...jobContext.properties, validationProfile: { type: 'object' }, target: { type: 'object' } }, required: ['validationProfile', 'target'] } },
+      { name: 'capture_validation', description: 'Queue deterministic validation capture for an existing validation session.', category: 'Shader Validation', inputSchema: { ...jobContext, properties: { ...jobContext.properties, validationSessionId: { type: 'string' }, captures: { type: 'array' } }, required: ['validationSessionId', 'captures'] } },
+      { name: 'create_shader_checkpoint', description: 'Queue an immutable Shader run checkpoint manifest.', category: 'Shader Validation', inputSchema: { ...jobContext, properties: { ...jobContext.properties, decision: { type: 'string', enum: ['pass', 'revise', 'blocked'] }, assetRevisions: { type: 'array' } }, required: ['decision', 'assetRevisions'] } },
+      { name: 'restore_shader_checkpoint', description: 'Request structured restoration of a generated-assets checkpoint.', category: 'Shader Assets', inputSchema: { ...jobContext, properties: { ...jobContext.properties, checkpointId: { type: 'string' } }, required: ['checkpointId'] } }
+    ];
+  }
+
+  private async callStructuredTool(name: string, args: unknown) {
+    if (!this.unityConnection || this.unityConnection.readyState !== WebSocket.OPEN) {
+      throw new McpError(ErrorCode.InternalError, 'Unity Editor is not connected.');
+    }
+    if (this.structuredToolBusy) {
+      throw new McpError(ErrorCode.InternalError, 'Another structured Unity tool is currently executing; poll its job or retry shortly.');
+    }
+    this.structuredToolBusy = true;
+    try {
+      const resultPromise = new Promise<any>((resolve, reject) => {
+        this.structuredToolResultPromise = { resolve, reject };
+      });
+
+      this.unityConnection.send(JSON.stringify({
+        type: 'executeStructuredTool',
+        data: { toolName: name, args }
+      }));
+
+      const result = await Promise.race([
+        resultPromise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Structured Unity tool did not acknowledge within 30 seconds.')), 30000))
+      ]);
+      if (!result?.executionSuccess) {
+        throw new McpError(ErrorCode.InternalError, result?.errorDetails?.message ?? 'Structured Unity tool failed.');
+      }
+      return { content: [{ type: 'text', text: JSON.stringify(result.result, null, 2) }] };
+    } finally {
+      this.structuredToolResultPromise = null;
+      this.structuredToolBusy = false;
+    }
+  }
+
   private handleLogMessage(logEntry: LogEntry) {
     // Add to buffer, removing oldest if at capacity
     this.logBuffer.push(logEntry);
@@ -570,10 +678,10 @@ class UnityMCPServer {
         if (types && !types.includes(log.logType)) return false;
         
         // Message content filter
-        if (messageContains && !log.message.includes(messageContains)) return false;
+        if (messageContains && !(log.message ?? '').includes(messageContains)) return false;
         
         // Stack trace content filter
-        if (stackTraceContains && !log.stackTrace.includes(stackTraceContains)) return false;
+        if (stackTraceContains && !(log.stackTrace ?? '').includes(stackTraceContains)) return false;
         
         // Timestamp filters
         if (timestampAfter && new Date(log.timestamp) < new Date(timestampAfter)) return false;

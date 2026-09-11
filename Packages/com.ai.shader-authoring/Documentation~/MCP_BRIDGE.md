@@ -13,7 +13,8 @@ MCP client ⇄ stdio server ⇄ ws://localhost:8080 ⇄ Unity Editor
 - 连接 `ws://localhost:8080`；
 - 每秒发送编辑器状态；
 - 转发 Unity Console 日志；
-- 接收并执行服务端发来的编辑器命令；
+- 接收服务端的受控结构化工具调用，并在 Unity 主线程执行允许列表操作；
+- 接收人工批准的编辑器命令；
 - 断开后每 5 秒自动重连。
 
 可从 [`Unity MCP/Dashboard`](../Editor/Mcp/UnityMcpWindow.cs:68) 查看状态，或手动请求重连。
@@ -24,11 +25,17 @@ Unity MCP 位于 [`Editor/Mcp`](../Editor/Mcp/)，并由 [`UnityMcp.Editor.asmde
 
 ## 工具
 
-| 工具 | 说明 |
-| --- | --- |
-| `get_editor_state` | 返回播放状态、场景、选择对象、层级和工程资产摘要。 |
-| `execute_editor_command` | 编译并执行任意 Unity Editor C# 命令。 |
-| `get_logs` | 返回 Node MCP 服务缓存的 Unity 日志。 |
+| 分组 | 工具 | 说明 |
+| --- | --- | --- |
+| 诊断 | `get_editor_state`、`get_logs` | 返回编辑器状态与 Node 缓存的 Unity 日志。 |
+| 受控 Job | `run_unity_job`、`get_unity_job`、`cancel_unity_job` | 管理知识库、导入编译、验证与 Checkpoint Job。 |
+| 知识库 | `get_shader_knowledge_base_status`、`build_shader_knowledge_base`、`query_shader_knowledge_base` | 读取、构建和检索持久化项目 Shader 知识库。 |
+| 资产 | `inspect_shader_structure`、`get_asset_revision`、`write_generated_text_asset` | 读取 Shader 锚点/修订，或在生成目录执行 revision-protected 写入。 |
+| 验证 | `refresh_and_compile_assets`、`ensure_validation_scene`、`capture_validation` | 执行异步导入编译与验证证据采集。 |
+| 回滚 | `create_shader_checkpoint`、`restore_shader_checkpoint` | 创建 Checkpoint；恢复仅面向生成目录文本资产。 |
+| 人工诊断 | `execute_editor_command` | 编译并执行任意 Unity Editor C#，不属于正式 Shader 流程。 |
+
+结构化工具的完整请求/响应定义见 [`unity-mcp-p0-p1-contract.md`](../../../plans/unity-mcp-p0-p1-contract.md)。
 
 ## Node 服务
 
@@ -43,4 +50,6 @@ npm run build
 
 ## 安全说明
 
-`execute_editor_command` 是完全信任模式：它会编译并执行 MCP 客户端提供的 C# 源码。仅允许可信的本地 MCP 客户端连接此服务。此前 HTTP bridge 的路径白名单、Shader 验证、截图、生成文件写入和本地 Console REST API 均已移除。
+结构化工具不接受 C# 源码，并强制项目相对路径及允许写入根：`Assets/AIShader/Generated/`、`Artifacts/ShaderKnowledgeBase/`、`Artifacts/ShaderRuns/`。生成资产写入还必须满足 `baseRevision`、`operationContext.runId`、`codePlan.codePlanId` 与 `codePlan.allowedFiles` 校验。
+
+`execute_editor_command` 是完全信任模式：它会编译并执行 MCP 客户端提供的 C# 源码。仅允许可信的本地 MCP 客户端连接此服务，且它只能用于人工批准的诊断、原型和维护，不可替代正式结构化 Shader 流程。

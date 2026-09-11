@@ -13,6 +13,7 @@ using Microsoft.CSharp;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace UnityMcp.Editor
 {
@@ -259,6 +260,9 @@ namespace UnityMcp.Editor
                     case "executeEditorCommand":
                         ExecuteEditorCommand(root.TryGetProperty("data", out var commandData) ? commandData.GetRawText() : "{}");
                         break;
+                    case "executeStructuredTool":
+                        ExecuteStructuredTool(root.TryGetProperty("data", out var structuredToolData) ? structuredToolData.GetRawText() : "{}");
+                        break;
                     case "selectGameObject":
                         SelectGameObject(root.TryGetProperty("data", out var selectionData)
                             ? JsonSerializer.Deserialize<SelectionData>(selectionData.GetRawText())?.objectPath
@@ -295,7 +299,15 @@ namespace UnityMcp.Editor
                 if (string.IsNullOrWhiteSpace(command?.code)) throw new ArgumentException("The command payload does not contain C# code.");
                 Debug.Log($"[Unity MCP] Executing command:\n{command.code}");
                 var result = CSEditorHelper.ExecuteCommand(command.code);
-                Send("commandResult", new { result, logs, errors, warnings, executionSuccess = true });
+                Send("commandResult", new
+                {
+                    result,
+                    logs,
+                    errors,
+                    warnings,
+                    executionSuccess = true,
+                    errorDetails = (object)null
+                });
             }
             catch (Exception exception)
             {
@@ -307,6 +319,32 @@ namespace UnityMcp.Editor
             finally
             {
                 Application.logMessageReceived -= Capture;
+            }
+        }
+
+        private static void ExecuteStructuredTool(string toolData)
+        {
+            try
+            {
+                using (var document = JsonDocument.Parse(toolData ?? "{}"))
+                {
+                    var root = document.RootElement;
+                    if (!root.TryGetProperty("toolName", out var toolNameElement) || toolNameElement.ValueKind != JsonValueKind.String)
+                        throw new ArgumentException("The structured tool payload does not contain toolName.");
+                    var toolName = toolNameElement.GetString();
+                    var args = root.TryGetProperty("args", out var argsElement) ? argsElement : default;
+                    var result = UnityMcpShaderTools.Handle(toolName, args);
+                    Send("structuredToolResult", new { toolName, result, executionSuccess = true });
+                }
+            }
+            catch (Exception exception)
+            {
+                Debug.LogError("[Unity MCP] Structured tool failed: " + exception);
+                Send("structuredToolResult", new
+                {
+                    executionSuccess = false,
+                    errorDetails = new { message = exception.Message, stackTrace = exception.StackTrace, type = exception.GetType().Name }
+                });
             }
         }
 
@@ -369,8 +407,8 @@ namespace UnityMcp.Editor
                 var wrappedCode = $@"
 using UnityEngine;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using System;
-using System.Linq;
 using System.Collections.Generic;
 public static class UnityMcpCommandExecutor
 {{
@@ -383,10 +421,6 @@ public static class UnityMcpCommandExecutor
                 var options = new CompilerParameters { GenerateInMemory = true };
                 options.ReferencedAssemblies.Add(typeof(UnityEngine.Object).Assembly.Location);
                 options.ReferencedAssemblies.Add(typeof(UnityEditor.Editor).Assembly.Location);
-                options.ReferencedAssemblies.Add(typeof(Enumerable).Assembly.Location);
-                options.ReferencedAssemblies.Add(typeof(object).Assembly.Location);
-                var netStandard = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(assembly => assembly.GetName().Name == "netstandard");
-                if (netStandard != null) options.ReferencedAssemblies.Add(netStandard.Location);
 
                 using (var provider = new CSharpCodeProvider())
                 {

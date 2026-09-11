@@ -211,9 +211,47 @@ Alpha 使用 {来源}；Alpha Clip 为 {关闭或阈值}；透明混合为 {关�
 
 ## Step 3：构建 Rendering Semantic Graph
 
-图表达渲染计算与依赖，不保存特定 HLSL、URP Include 或具体函数名。
+图表达渲染计算、数据依赖与效果合成，不保存特定 HLSL、URP Include、具体函数名、Shader 路径或 Unity API 调用。它是 `MaterialIntent` 到 `ShaderCodePlan` 之间唯一的计算语义真相。
 
-### 固定节点词表
+### 图的基本结构
+
+```text
+RenderingSemanticGraph
+  graphId
+  sourceIntentId
+  workflow: metallic_roughness
+  nodes
+  edges
+  effectComposition
+  outputContract
+  unresolvedSemantics
+  debugContract
+```
+
+```text
+GraphNode
+  id
+  kind
+  phase
+  inputs
+  outputs
+  dependsOn
+  reads
+  writes
+  preconditions
+  requiredCapabilities
+  fallbackBehavior
+  debugChannels
+  validationStage
+  sourceIntentFields
+  sourceEffectLayerId
+```
+
+- `reads` 与 `writes` 使用语义槽位，不使用变量名，例如 `surface.baseColor`、`alpha.coverage`、`emission.additive`。
+- `phase` 是合法性约束而非固定效果排序。它只定义效果可以读写哪些生命周期阶段。
+- 同一图内节点 `id` 必须唯一；边、读写关系与 `dependsOn` 必须形成有向无环图。出现循环时，返回 `BLOCKED` 并要求拆分效果或明确反馈语义。
+
+### 基础节点词表
 
 ```text
 GeometryInput
@@ -249,36 +287,275 @@ OutputControl
   AlphaBlendOutput
 ```
 
-### 必须遵守的组合规则
+### 效果节点词表
 
-1. 统一从 `MaterialInput` 构建 `SurfaceParameters`。
-2. `LitColor = DirectDiffuse + DirectSpecular + IndirectDiffuse + IndirectSpecular + EmissionContribution`。
-3. AO 只能作用于语义图明确允许的间接光路径，不能成为任意全局乘法。
-4. 自发光不受直接光、阴影或光照衰减影响；最终是否受 Alpha 影响由输出节点决定。
-5. Alpha 从指定常量、Base Color Alpha 或独立遮罩通道读取。
-6. 启用 Alpha Clip 时，先执行片元裁剪。
-7. `blendMode = opaque` 时，采用 `OpaqueOutput`。
-8. `blendMode = alpha_blend` 时，采用 `AlphaBlendOutput`，其渲染状态固定为 `Blend SrcAlpha OneMinusSrcAlpha` 和 `ZWrite Off`。
-9. Alpha Blend 与 Alpha Clip 同时开启时，阈值以下完全丢弃，阈值以上使用连续 Alpha 混合。
-10. 折射、透明阴影、排序修正、深度预通道不得被加入图。
+每个 `MaterialIntent.effects.orderedLayers` 中启用的层均展开为一个或多个带 `sourceEffectLayerId` 的节点；图不得凭空加入用户未请求的效果。
 
-### 节点元数据
+```text
+EffectInput
+  EffectMask
+  EffectParameter
+  TimeSignal
+
+Dissolve
+  DissolveMask
+  DissolveThreshold
+  DissolveCoverage
+  DissolveEdgeBand
+  DissolveEdgeEmission
+
+PulseEmission
+  PulseWave
+  PulseIntensity
+  PulseEmission
+
+FresnelRim
+  FresnelFactor
+  FresnelRimEmission
+
+EffectCompose
+  EffectAlphaCompose
+  EffectSurfaceCompose
+  EffectEmissionCompose
+```
+
+节点语义：
+
+- `DissolveMask` 从显式遮罩、贴图通道或常量取得连续遮罩值。
+- `DissolveThreshold` 根据阈值和可选时间变化生成裁剪边界；它不直接决定最终输出。
+- `DissolveCoverage` 生成 `alpha.coverage` 的候选修改；只有其被后续组合节点消费时，才会影响 Alpha Clip 或透明 Alpha。
+- `DissolveEdgeBand` 生成溶解边缘带；`DissolveEdgeEmission` 将该边缘带转换为可组合的发光贡献。
+- `PulseWave` 仅表达时间函数的归一化输出；`PulseIntensity` 将其转换为强度或调制因子；`PulseEmission` 产生可组合发光贡献。
+- `FresnelFactor` 只表示法线与视线方向得到的艺术化边缘因子，不能替代物理 BRDF 中的 Fresnel 项；`FresnelRimEmission` 产生可组合发光贡献。
+- `EffectAlphaCompose`、`EffectSurfaceCompose`、`EffectEmissionCompose` 是显式的冲突消解节点：所有对同一语义槽位的多效果写入必须经过相应 Compose 节点。
+
+### 语义槽位与生命周期阶段
+
+```text
+Phase 0  input
+  geometry.*
+  material.*
+  effect.*
+
+Phase 1  surface
+  surface.baseColor
+  surface.metallic
+  surface.roughness
+  surface.normal
+  surface.ambientOcclusion
+
+Phase 2  lighting
+  lighting.directDiffuse
+  lighting.directSpecular
+  lighting.indirectDiffuse
+  lighting.indirectSpecular
+  lighting.litColor
+
+Phase 3  emission
+  emission.base
+  emission.additive
+  emission.composed
+
+Phase 4  alpha
+  alpha.base
+  alpha.coverage
+  alpha.clipThreshold
+  alpha.composed
+
+Phase 5  output
+  output.color
+  output.alpha
+  output.renderState
+```
+
+- 允许 `MaterialIntent.compositionOrder` 在同一目标槽位的多个效果层之间定义顺序。
+- 不允许任意跨阶段重排：节点只能读取本阶段及更早阶段的槽位；只能写本阶段或更晚阶段中已被该节点类型授权的槽位。
+- 效果层必须声明 `modulationTargets` 与合成模式。`compositionOrder` 未由用户指定时，按下文默认方案预填，并且必须先向用户展示并询问是否调整。
+
+### 默认效果排序确认门禁
+
+只要请求包含两个及以上启用的效果层，且用户尚未明确给出效果排序，主 Skill 必须在生成 `RenderingSemanticGraph` 前展示默认排序并询问用户是否调整。不得把默认值静默写入 `MaterialIntent`。
+
+默认方案：
+
+```text
+1. Dissolve 掩码与裁剪优先
+   DissolveMask
+     -> DissolveThreshold
+     -> DissolveCoverage
+     -> EffectAlphaCompose
+     -> AlphaClip 或最终 Alpha
+
+2. Dissolve 边缘发光
+   DissolveEdgeBand
+     -> DissolveEdgeEmission
+     -> EffectEmissionCompose
+
+3. Pulse 发光
+   PulseWave
+     -> PulseIntensity
+     -> PulseEmission
+     -> EffectEmissionCompose
+
+4. Fresnel 边缘光
+   FresnelFactor
+     -> FresnelRimEmission
+     -> EffectEmissionCompose
+
+5. 最终合成
+   emission.base
+     -> DissolveEdgeEmission
+     -> PulseEmission
+     -> FresnelRimEmission
+     -> EmissionContribution
+     -> Final Color
+```
+
+对应的默认局部顺序为：
+
+```text
+alpha.coverage / alpha.clipThreshold
+  dissolve: order 10
+
+emission.additive
+  dissolve edge: order 20
+  pulse emission: order 30
+  fresnel rim emission: order 40
+```
+
+对外确认格式：
+
+```text
+检测到多个材质效果。默认按以下顺序合成：
+1. 溶解掩码与裁剪优先；
+2. 溶解边缘发光；
+3. 呼吸光以加法叠加至 Emission；
+4. 菲涅尔边缘光以加法叠加至 Emission。
+
+是否需要调整效果顺序、某个效果的叠加方式，或指定一个效果调制另一个效果？
+```
+
+- 用户确认“不需要调整”时，主 Skill 将上述顺序与操作显式写入 `MaterialIntent.effects.orderedLayers` 和各目标的 `EffectCompositionRequest`，其 `source` 标记为 `default_confirmed`。
+- 用户提出调整时，按用户的局部目标顺序生成 `EffectCompositionRequest`；允许例如 `Pulse` 调制 `Fresnel` 强度，但必须明确目标、操作和依赖关系。
+- 仅一个启用效果层时，不弹出排序确认；仍记录其默认操作和 `source = default_single_layer`。
+- 用户描述已经包含顺序语义时，例如“先溶解再出现边缘光”，视为显式排序；仅回显解析结果供确认，不再询问是否采用默认。
+- 用户拒绝确认且未提供排序时，返回 `BLOCKED`，不得进入代码计划。
+
+### 可排序效果层与冲突规则
+
+`compositionOrder` 不是简单整数列表，而是效果层对一个或多个目标槽位提出的有序写入请求：
+
+```text
+EffectCompositionRequest
+  effectLayerId
+  target: surface.baseColor | emission.additive | alpha.coverage | alpha.clipThreshold
+  operation: add | multiply | replace | min | max | lerp
+  order: integer
+  requiresBefore: effectLayerId[]
+  requiresAfter: effectLayerId[]
+  condition: always | surviving_fragments_only | clipped_edge_only
+```
+
+解析规则：
+
+1. 先按 `target` 分组，再将 `order`、`requiresBefore` 与 `requiresAfter` 解析为局部有向图。
+2. `order` 相同且无显式依赖的两个 `replace` 操作构成冲突，返回 `BLOCKED`；不得依赖模型的隐式顺序。
+3. 同序 `add` 可交换；同序 `multiply` 可交换；`add` 与 `multiply` 不可交换，必须由显式顺序或合成节点表达。
+4. `min`、`max` 仅可用于 `alpha.coverage`、`alpha.clipThreshold` 或明确标注的标量效果参数；不允许用于最终 LitColor。
+5. `lerp` 必须声明权重来源、输入 A/B 和覆盖对象；缺失时返回 `BLOCKED`。
+6. 解析后的每个目标必须生成唯一 Compose 节点，Compose 节点的输入顺序就是该目标的最终效果顺序。
+7. 层的全局 `compositionOrder` 仅是默认局部顺序；当同一层写多个目标时，各目标可有不同的实际位置。
+
+### 首期效果层的合法读写范围
+
+| 效果层 | 必需读取 | 可写目标 | 禁止写入 |
+|---|---|---|---|
+| dissolve | `material`、可选 `effect.time` | `alpha.coverage`、`alpha.clipThreshold`、`emission.additive` | `lighting.*`、`output.renderState` |
+| pulse_emission | `effect.time`、层参数 | `emission.additive`、显式声明时 `emission.base` | `alpha.*`、`lighting.*`、`output.renderState` |
+| fresnel_rim | `geometry.worldNormal`、`geometry.viewDirection`、层参数 | `emission.additive`、显式声明时 `surface.baseColor` | `alpha.clipThreshold`、`lighting.*`、`output.renderState` |
+
+- `dissolve` 可以参与透明 Alpha 与 Alpha Clip，但它不能改变 `blendMode`、`ZWrite` 或 Render Queue。
+- `pulse_emission` 和 `fresnel_rim` 默认以 `add` 贡献 `emission.additive`；若用户要求调制其他效果，必须在对应 `EffectCompositionRequest` 中显式指向目标与操作。
+- “仅保留的片元才发光”通过 `condition = surviving_fragments_only` 表达。实现上由效果发光链依赖 Alpha Clip 判定语义，但图仍保持无循环：裁剪判定读取已组合覆盖值，最终输出只消费仍存活片元的颜色。
+
+### 必须遵守的基础组合与输出规则
+
+1. 统一从 `MaterialInput` 构建 `SurfaceParameters`；任何 `surface.*` 效果修改都必须在该节点之前或通过明确的 `EffectSurfaceCompose` 回写。
+2. `LitColor = DirectDiffuse + DirectSpecular + IndirectDiffuse + IndirectSpecular`；效果发光不混入直接或间接光计算。
+3. `EmissionContribution = emission.composed`，其中 `emission.composed = emission.base + 按顺序组合的 emission.additive`，除非具体 Compose 节点明确了乘法或替换语义。
+4. 最终颜色为 `output.color = lighting.litColor + EmissionContribution`。
+5. AO 只能作用于图明确允许的间接光路径，不能成为任意全局乘法。
+6. Alpha 从指定常量、Base Color Alpha 或独立遮罩通道读取，形成 `alpha.base`；效果仅可通过 `EffectAlphaCompose` 影响 `alpha.coverage` 或 `alpha.clipThreshold`。
+7. 启用 Alpha Clip 时，使用 `alpha.composed` 与最终 `alpha.clipThreshold` 执行片元裁剪。启用效果不自动开启 Alpha Clip；`MaterialIntent.alpha.alphaClipEnabled` 必须为真或效果层显式声明其为必需前置条件。
+8. `blendMode = opaque` 时，采用 `OpaqueOutput`；`blendMode = alpha_blend` 时，采用 `AlphaBlendOutput`，渲染状态固定为 `Blend SrcAlpha OneMinusSrcAlpha` 与 `ZWrite Off`。
+9. Alpha Blend 与 Alpha Clip 同时开启时，阈值以下完全丢弃，阈值以上使用最终连续 Alpha 混合。
+10. 折射、透明阴影、排序修正、深度预通道不得被加入图；任何效果层也不得间接引入这些能力。
+
+### 默认图与效果图的关系
+
+无效果层时，基础图为：
+
+```text
+GeometryInput + MaterialInput
+  -> SurfaceParameters
+  -> DirectDiffuse + DirectSpecular + IndirectDiffuse + IndirectSpecular
+  -> LitColor
+MaterialInput.Emission
+  -> EmissionContribution
+LitColor + EmissionContribution
+  -> OutputControl
+```
+
+效果层被插入为显式子图，而不是直接覆盖基础节点。例如：
+
+```text
+DissolveMask -> DissolveCoverage -> EffectAlphaCompose -> AlphaClip
+DissolveEdgeBand -> DissolveEdgeEmission -> EffectEmissionCompose
+PulseWave -> PulseIntensity -> PulseEmission -> EffectEmissionCompose
+WorldNormal + ViewDirection -> FresnelFactor -> FresnelRimEmission -> EffectEmissionCompose
+EffectEmissionCompose -> EmissionContribution -> Final Color
+```
+
+### 节点元数据与验证要求
 
 每个节点必须包含：
 
 ```text
 id
 kind
+phase
 inputs
 outputs
 dependsOn
+reads
+writes
 preconditions
 requiredCapabilities
 fallbackBehavior
 debugChannels
 validationStage
 sourceIntentFields
+sourceEffectLayerId
 ```
+
+每个效果子图至少提供一个可观察 Debug 通道：
+
+```text
+dissolve
+  dissolve_mask
+  dissolve_coverage
+  dissolve_edge_band
+
+pulse_emission
+  pulse_wave
+  pulse_emission
+
+fresnel_rim
+  fresnel_factor
+  fresnel_rim_emission
+```
+
+能力不足、非法跨阶段读写、目标槽位冲突、效果顺序循环或缺少必要 Compose 语义时，图构建必须返回 `BLOCKED`；不得静默重排或删除用户请求的效果。
 
 ## Step 4：基于知识库确认当前任务的 Shader 锚点与实时能力
 
