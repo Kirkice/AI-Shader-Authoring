@@ -1,9 +1,7 @@
 {
-  "name": "AIShaderAuthoring.Editor",
-  "rootNamespace": "AIShader.Editor",
-  "references": [
-    "AIShaderAuthoring.Runtime"
-  ],
+  "name": "UnityMcp.Editor",
+  "rootNamespace": "UnityMcp.Editor",
+  "references": [],
   "includePlatforms": [
     "Editor"
   ],

@@ -5,9 +5,9 @@ using System.Diagnostics;
 using UnityEditor;
 using UnityEngine;
 
-namespace AIShader.Editor
+namespace UnityMcp.Editor
 {
-    public sealed class AIShaderMcpWindow : EditorWindow
+    public sealed class UnityMcpWindow : EditorWindow
     {
         private enum ResultState { Empty, Loading, Success, Error }
 
@@ -68,7 +68,7 @@ namespace AIShader.Editor
         [MenuItem("Unity MCP/Dashboard", priority = 0)]
         public static void Open()
         {
-            var window = GetWindow<AIShaderMcpWindow>("Unity MCP");
+            var window = GetWindow<UnityMcpWindow>("Unity MCP");
             window.minSize = new Vector2(760f, 440f);
             window.Show();
         }

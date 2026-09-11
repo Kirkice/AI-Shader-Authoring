@@ -14,7 +14,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 
-namespace AIShader.Editor
+namespace UnityMcp.Editor
 {
     /// <summary>
     /// Unity-side WebSocket client used by the bundled UnityMCP stdio server.

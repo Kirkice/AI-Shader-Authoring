@@ -1,6 +1,6 @@
 # Unity MCP WebSocket Integration
 
-Unity MCP 使用外部 [`unity-mcp-server`](../../../Tools/unity-mcp-server/src/index.ts:1) 作为标准输入输出 MCP 服务，并由 Unity Editor 端的 [`UnityMcpConnection`](../Editor/UnityMcpConnection.cs:22) 建立本机 WebSocket 连接。
+Unity MCP 使用外部 [`unity-mcp-server`](../../../Tools/unity-mcp-server/src/index.ts:1) 作为标准输入输出 MCP 服务，并由 Unity Editor 端的 [`UnityMcpConnection`](../Editor/Mcp/UnityMcpConnection.cs:24) 建立本机 WebSocket 连接。
 
 ```text
 MCP client ⇄ stdio server ⇄ ws://localhost:8080 ⇄ Unity Editor
@@ -16,7 +16,11 @@ MCP client ⇄ stdio server ⇄ ws://localhost:8080 ⇄ Unity Editor
 - 接收并执行服务端发来的编辑器命令；
 - 断开后每 5 秒自动重连。
 
-可从 [`Unity MCP/Dashboard`](../Editor/AIShaderMcpWindow.cs:87) 查看状态，或手动请求重连。
+可从 [`Unity MCP/Dashboard`](../Editor/Mcp/UnityMcpWindow.cs:68) 查看状态，或手动请求重连。
+
+## 程序集隔离
+
+Unity MCP 位于 [`Editor/Mcp`](../Editor/Mcp/)，并由 [`UnityMcp.Editor.asmdef`](../Editor/Mcp/UnityMcp.Editor.asmdef:1) 编译为独立的 `UnityMcp.Editor` 程序集。该程序集不引用 `AIShaderAuthoring.Editor` 或 `AIShaderAuthoring.Runtime`；AI Shader 仅是可被通用 C# Editor 命令操作的一个使用方。
 
 ## 工具
 

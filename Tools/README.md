@@ -20,7 +20,7 @@ npm run build
 ## 启动顺序
 
 1. 先启动或由 MCP 客户端启动 Node.js 服务。
-2. 在 Unity 中打开 [`Unity MCP/Dashboard`](../Packages/com.ai.shader-authoring/Editor/AIShaderMcpWindow.cs:87)。
+2. 在 Unity 中打开 [`Unity MCP/Dashboard`](../Packages/com.ai.shader-authoring/Editor/Mcp/UnityMcpWindow.cs:68)。
 3. Unity Editor 自动连接 `ws://localhost:8080`；也可在面板中点击 **Start service** 发起重连。
 
 ## MCP 工具

@@ -973,16 +973,19 @@ pbr-stage-09-final-combine
 ```text
 Packages/com.ai.shader-authoring/package.json
 Packages/com.ai.shader-authoring/Runtime/AIShaderAuthoring.Runtime.asmdef
-Packages/com.ai.shader-authoring/Runtime/AIShaderDebugChannel.cs
-Packages/com.ai.shader-authoring/Runtime/AIShaderValidationController.cs
-Packages/com.ai.shader-authoring/Runtime/AIShaderProjectShaderProfile.cs
+Packages/com.ai.shader-authoring/Runtime/Validation/AIShaderDebugChannel.cs
+Packages/com.ai.shader-authoring/Runtime/Validation/AIShaderValidationController.cs
+Packages/com.ai.shader-authoring/Runtime/ProjectProfile/AIShaderProjectShaderProfile.cs
 Packages/com.ai.shader-authoring/Editor/AIShaderAuthoring.Editor.asmdef
-Packages/com.ai.shader-authoring/Editor/AIShaderValidationSceneCreator.cs
-Packages/com.ai.shader-authoring/Editor/AIShaderCaptureManifest.cs
-Packages/com.ai.shader-authoring/Editor/AIShaderValidationCaptureMenu.cs
-Packages/com.ai.shader-authoring/Editor/AIShaderProjectContext.cs
-Packages/com.ai.shader-authoring/Editor/AIShaderProjectContextWindow.cs
-Packages/com.ai.shader-authoring/Editor/AIShaderProjectContextPrompt.cs
+Packages/com.ai.shader-authoring/Editor/Compilation/AIShaderCompilationBridge.cs
+Packages/com.ai.shader-authoring/Editor/Mcp/UnityMcpConnection.cs
+Packages/com.ai.shader-authoring/Editor/Mcp/UnityMcpWindow.cs
+Packages/com.ai.shader-authoring/Editor/ProjectContext/AIShaderProjectContext.cs
+Packages/com.ai.shader-authoring/Editor/ProjectContext/AIShaderProjectContextWindow.cs
+Packages/com.ai.shader-authoring/Editor/ProjectContext/AIShaderProjectContextPrompt.cs
+Packages/com.ai.shader-authoring/Editor/Validation/AIShaderValidationSceneCreator.cs
+Packages/com.ai.shader-authoring/Editor/Validation/AIShaderCaptureManifest.cs
+Packages/com.ai.shader-authoring/Editor/Validation/AIShaderValidationCaptureMenu.cs
 ```
 
 已实现的能力：
@@ -1072,7 +1075,7 @@ ProjectSettings/AIShaderProjectContext.json
 Package 使用：
 
 ```text
-Packages/com.ai.shader-authoring/Editor/UnityMcpConnection.cs
+Packages/com.ai.shader-authoring/Editor/Mcp/UnityMcpConnection.cs
 Tools/unity-mcp-server/src/index.ts
 ```
 
