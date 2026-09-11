@@ -1,55 +1,37 @@
-# AI Shader MCP Server
+# Unity MCP Server
 
-这是一个无第三方依赖的 stdio MCP Server，负责把标准 MCP `tools/list` 和 `tools/call` 请求转发到 Unity Editor 内的 HTTP Bridge。
-
-## 启动
-
-先在 Unity Editor 中执行：
+本项目的 Unity MCP 使用 WebSocket 架构：Unity Editor 插件主动连接本机的 Node.js MCP 服务，MCP 服务再通过标准输入输出与 AI 客户端通信。
 
 ```text
-AI Shader/MCP Dashboard 中点击 Start MCP Service
+AI Client ⇄ stdio MCP server ⇄ WebSocket :8080 ⇄ Unity Editor
 ```
 
-然后将 MCP 客户端的 Server 配置指向：
+## 安装与构建
 
-```text
-python Tools/ai_shader_mcp_server.py
+在 [`Tools/unity-mcp-server`](unity-mcp-server/package.json:1) 中执行：
+
+```powershell
+npm install
+npm run build
 ```
 
-Windows 也可以使用：
+构建后入口为 [`Tools/unity-mcp-server/build/index.js`](unity-mcp-server/src/index.ts:1)。将 [`mcp-server.example.json`](mcp-server.example.json:1) 的配置加入 MCP 客户端。
 
-```text
-py Tools/ai_shader_mcp_server.py
-```
+## 启动顺序
 
-可通过环境变量修改 Unity Bridge 地址：
+1. 先启动或由 MCP 客户端启动 Node.js 服务。
+2. 在 Unity 中打开 [`Unity MCP/Dashboard`](../Packages/com.ai.shader-authoring/Editor/AIShaderMcpWindow.cs:87)。
+3. Unity Editor 自动连接 `ws://localhost:8080`；也可在面板中点击 **Start service** 发起重连。
 
-```text
-AI_SHADER_UNITY_BRIDGE=http://127.0.0.1:8765
-```
+## MCP 工具
 
-## 工具
+- `get_editor_state`：获取播放状态、当前场景、选择对象、场景层级及工程资产摘要。
+- `execute_editor_command`：动态编译并执行 Unity Editor C# 命令。
+- `get_logs`：查询 Unity 编辑器发送到服务端的日志缓冲区。
 
-- `unity_get_console`：按需获取 Console，支持 level、limit、search、includeStackTrace
-- `unity_get_errors`：获取 Error、Exception、Assert
-- `unity_get_log_detail`：按 id 获取完整堆栈
-- `unity_get_status`
-- `unity_clear_console`
-- `get_unity_status`
-- `clear_console_logs`
-- `get_console_logs`
-- `get_console_errors`
-- `get_console_warnings`
-- `refresh_assets`
-- `get_project_context`
-- `write_generated_text`
-- `create_validation_scene`
-- `capture_validation_frame`
+## 运行边界
 
-## 重要限制
-
-- Unity Editor 必须保持运行并已启动 Local Bridge；
-- Console 读取的是 Unity Package Bridge 缓存的最近 1000 条日志；
-- 文件写入由 Unity 侧校验，只允许写入配置的 `generatedAssetsPath`；
-- 外部 MCP Server 不直接读写 Unity 工程，也不执行任意 Shell 命令；
-- 修改 Shader 的推荐顺序是先 `clear_console_logs`，再写入、刷新、检查编译和读取 Console。
+- WebSocket 仅绑定为本机 `localhost:8080`。
+- Unity 端自动重连间隔为 5 秒。
+- `execute_editor_command` 可以运行任意 Unity Editor C# 代码，应仅连接可信的本地 MCP 客户端。
+- 原有 HTTP bridge、受限文件写入、Shader 验证和本地 Console 查询工具已移除，不再通过 Unity MCP 暴露。

@@ -1,389 +1,434 @@
 #if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using UnityEditor;
 using UnityEngine;
 
 namespace AIShader.Editor
 {
-    /// <summary>
-    /// MCP control panel inspired by the supplied reference UI.
-    /// Provides MCP connection settings, activity audit, categorized tools and schemas.
-    /// </summary>
     public sealed class AIShaderMcpWindow : EditorWindow
     {
-        private const string PortKey = "AIShader.McpPort";
-        private enum Page { Mcp, Tools }
+        private enum ResultState { Empty, Loading, Success, Error }
 
-        private struct ToolInfo
+        private sealed class ToolInfo
         {
+            public string Id;
             public string Group;
-            public string Name;
+            public string Summary;
             public string Description;
-            public string Schema;
-            public ToolInfo(string group, string name, string description, string schema)
-            {
-                Group = group; Name = name; Description = description; Schema = schema;
-            }
+            public bool IsReadOnly;
         }
 
-        private static readonly Color WindowBackground = new Color(0.145f, 0.145f, 0.145f);
-        private static readonly Color TopBar = new Color(0.045f, 0.045f, 0.045f);
-        private static readonly Color Panel = new Color(0.115f, 0.115f, 0.115f);
-        private static readonly Color Input = new Color(0.075f, 0.075f, 0.075f);
-        private static readonly Color Border = new Color(0.22f, 0.22f, 0.22f);
-        private static readonly Color Text = new Color(0.78f, 0.78f, 0.78f);
-        private static readonly Color Muted = new Color(0.52f, 0.52f, 0.52f);
-        private static readonly Color Cyan = new Color(0.50f, 0.80f, 0.88f);
-        private static readonly Color Purple = new Color(0.74f, 0.64f, 0.92f);
-        private static readonly Color Green = new Color(0.34f, 0.90f, 0.50f);
-        private static readonly Color Red = new Color(0.95f, 0.32f, 0.28f);
-
-        private Page page;
-        private string bindAddress = "127.0.0.1";
-        private int port = 8765;
-        private bool autoSelectPort;
-        private bool startWithEditor = true;
-        private bool confirmWriteTools;
-        private string searchText = string.Empty;
-        private int selectedTool = -1;
-        private Vector2 toolScroll;
-        private Vector2 auditScroll;
+        private const float ToolbarHeight = 24f;
+        private const float MinimumNavigatorWidth = 190f;
+        private const float MaximumNavigatorWidth = 360f;
+        private const float MinimumResultHeight = 130f;
+        private const float InspectorHeight = 170f;
         private readonly List<ToolInfo> tools = new List<ToolInfo>();
-        private readonly List<string> audit = new List<string>();
-        private GUIStyle tabStyle;
-        private GUIStyle activeTabStyle;
-        private GUIStyle panelStyle;
-        private GUIStyle inputStyle;
-        private GUIStyle headingStyle;
-        private GUIStyle labelStyle;
-        private GUIStyle mutedStyle;
-        private GUIStyle monoStyle;
-        private GUIStyle tableHeaderStyle;
-        private GUIStyle toolRowStyle;
-        private GUIStyle selectedToolStyle;
-        private GUIStyle groupStyle;
-        private GUIStyle toolButtonStyle;
-        private GUIStyle selectedToolButtonStyle;
-        private GUIStyle bottomStyle;
-        private GUIStyle bottomButtonStyle;
+        private readonly Dictionary<string, bool> groupExpanded = new Dictionary<string, bool>();
 
-        [MenuItem("AI Shader/MCP Dashboard", priority = 0)]
-        public static void Open() => GetWindow<AIShaderMcpWindow>("AI Shader MCP");
+        private float navigatorWidth = 260f;
+        private float resultHeight;
+        private bool draggingNavigator;
+        private bool draggingResult;
+        private int selectedTool;
+        private string search = string.Empty;
+        private Vector2 navigatorScroll;
+        private Vector2 resultScroll;
+        private int formatIndex;
+        private bool includeScripts;
+        private bool includeHierarchy = true;
+        private string commandCode = "Debug.Log(\"Hello from Unity MCP\");";
+        private ResultState resultState;
+        private string resultText = string.Empty;
+        private string errorText = string.Empty;
+        private string resultTimestamp = string.Empty;
+        private long elapsedMilliseconds;
+        private int resultView;
+        private bool running;
+
+        private GUIStyle toolbarLabel;
+        private GUIStyle titleStyle;
+        private GUIStyle descriptionStyle;
+        private GUIStyle mutedStyle;
+        private GUIStyle sectionStyle;
+        private GUIStyle toolNameStyle;
+        private GUIStyle toolSelectedStyle;
+        private GUIStyle codeStyle;
+        private GUIStyle statusStyle;
+        private GUIStyle groupHeaderStyle;
+        private GUIStyle runButtonStyle;
+        private Texture2D selectedTexture;
+        private Texture2D accentTexture;
+        private Texture2D splitterTexture;
+        private Texture2D codeTexture;
+        private Texture2D toolbarTexture;
+
+        [MenuItem("Unity MCP/Dashboard", priority = 0)]
+        public static void Open()
+        {
+            var window = GetWindow<AIShaderMcpWindow>("Unity MCP");
+            window.minSize = new Vector2(760f, 440f);
+            window.Show();
+        }
 
         private void OnEnable()
         {
-            port = EditorPrefs.GetInt(PortKey, 8765);
-            minSize = new Vector2(860f, 520f);
-            BuildTools();
+            tools.Clear();
+            tools.Add(new ToolInfo { Id = "get_editor_state", Group = "状态", Summary = "读取当前 Editor 上下文", Description = "读取当前 Unity Editor 上下文，包括场景、层级、选择对象与播放状态。", IsReadOnly = true });
+            tools.Add(new ToolInfo { Id = "execute_editor_command", Group = "命令", Summary = "执行 C# Editor 命令", Description = "在 Unity Editor 上下文中编译并执行 C# 命令。", IsReadOnly = false });
+            tools.Add(new ToolInfo { Id = "get_logs", Group = "诊断", Summary = "读取本地 Console 日志", Description = "读取 Unity Console 的本地日志缓冲区。", IsReadOnly = true });
+            groupExpanded["状态"] = true;
+            groupExpanded["命令"] = true;
+            groupExpanded["诊断"] = true;
+            var availableHeight = position.height - ToolbarHeight;
+            resultHeight = Mathf.Clamp(availableHeight * 0.65f, MinimumResultHeight, Mathf.Max(MinimumResultHeight, availableHeight - InspectorHeight));
             CreateStyles();
-            AddAudit("MCP dashboard opened.");
-            EditorApplication.update += RepaintOnUpdate;
+            EditorApplication.update += Repaint;
         }
 
-        private void OnDisable() => EditorApplication.update -= RepaintOnUpdate;
-
-        private void RepaintOnUpdate()
+        private void OnDisable()
         {
-            if (page == Page.Mcp) Repaint();
+            EditorApplication.update -= Repaint;
+            DestroyTexture(ref selectedTexture);
+            DestroyTexture(ref accentTexture);
+            DestroyTexture(ref splitterTexture);
+            DestroyTexture(ref codeTexture);
+            DestroyTexture(ref toolbarTexture);
         }
 
         private void OnGUI()
         {
-            if (panelStyle == null) CreateStyles();
-            DrawBackground();
-            DrawTabs();
-            var contentHeight = Mathf.Max(220f, position.height - 112f);
-            GUILayout.BeginArea(new Rect(0f, 72f, position.width, contentHeight));
-            if (page == Page.Mcp) DrawMcpPage(); else DrawToolsPage();
-            GUILayout.EndArea();
-            DrawBottomStatus();
+            if (toolbarLabel == null) CreateStyles();
+            HandleSplitters();
+            DrawToolbar();
+
+            var contentY = ToolbarHeight;
+            var contentHeight = position.height - ToolbarHeight;
+            DrawNavigator(new Rect(0f, contentY, navigatorWidth, contentHeight));
+            DrawVerticalSplitter(new Rect(navigatorWidth, contentY, 1f, contentHeight));
+            DrawMain(new Rect(navigatorWidth + 1f, contentY, position.width - navigatorWidth - 1f, contentHeight));
         }
 
-        private void DrawBackground()
+        private void DrawToolbar()
         {
-            EditorGUI.DrawRect(new Rect(0f, 0f, position.width, position.height), WindowBackground);
-            EditorGUI.DrawRect(new Rect(0f, 0f, position.width, 40f), TopBar);
-            EditorGUI.DrawRect(new Rect(0f, position.height - 38f, position.width, 38f), TopBar);
-        }
+            GUI.DrawTexture(new Rect(0f, 0f, position.width, ToolbarHeight), toolbarTexture);
+            var endpoint = UnityMcpConnection.ServerUri;
+            GUI.Label(new Rect(6f, 3f, 76f, 18f), "UNITY MCP", toolbarLabel);
+            DrawToolbarSeparator(85f);
+            GUI.Label(new Rect(92f, 3f, 140f, 18f), Application.productName, mutedStyle);
+            DrawToolbarSeparator(238f);
 
-        private void DrawTabs()
-        {
-            GUILayout.Space(4f);
-            EditorGUILayout.BeginHorizontal(GUILayout.Height(32f));
-            if (GUILayout.Button("MCP", page == Page.Mcp ? activeTabStyle : tabStyle, GUILayout.Width(62f), GUILayout.Height(32f))) page = Page.Mcp;
-            if (GUILayout.Button("Tools", page == Page.Tools ? activeTabStyle : tabStyle, GUILayout.Width(62f), GUILayout.Height(32f))) page = Page.Tools;
-            GUILayout.FlexibleSpace();
-            EditorGUILayout.EndHorizontal();
-        }
+            var state = UnityMcpConnection.State;
+            var stateText = state == UnityMcpConnection.ServiceState.Connected ? "已连接" : state == UnityMcpConnection.ServiceState.WaitingForConnection ? "连接中" : "连接失败";
+            var stateColor = state == UnityMcpConnection.ServiceState.Connected ? new Color(0.36f, 0.78f, 0.44f) : state == UnityMcpConnection.ServiceState.WaitingForConnection ? new Color(0.92f, 0.68f, 0.25f) : new Color(0.89f, 0.36f, 0.34f);
+            EditorGUI.DrawRect(new Rect(248f, 9f, 6f, 6f), stateColor);
+            GUI.Label(new Rect(260f, 3f, 54f, 18f), stateText, new GUIStyle(statusStyle) { normal = { textColor = stateColor } });
+            DrawToolbarSeparator(319f);
+            GUI.Label(new Rect(326f, 3f, 154f, 18f), endpoint.Host + ":" + endpoint.Port + "  WebSocket", mutedStyle);
 
-        private void DrawMcpPage()
-        {
-            GUILayout.Space(4f);
-            EditorGUILayout.BeginHorizontal(GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true));
-            DrawConnectionPanel();
-            GUILayout.Space(5f);
-            DrawAuditPanel();
-            GUILayout.FlexibleSpace();
-            EditorGUILayout.EndHorizontal();
-        }
-
-        private void DrawConnectionPanel()
-        {
-            EditorGUILayout.BeginVertical(panelStyle, GUILayout.MinWidth(560f), GUILayout.Width(Mathf.Clamp(position.width * 0.46f, 560f, 760f)), GUILayout.ExpandHeight(true));
-            EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("Server & Connection", headingStyle);
-            GUILayout.FlexibleSpace();
-            var serviceRunning = BridgeRunning();
-            var statusStyle = new GUIStyle(labelStyle) { normal = { textColor = serviceRunning ? Green : Muted } };
-            EditorGUILayout.LabelField(serviceRunning ? "● MCP" : "○ MCP", statusStyle, GUILayout.Width(62f));
-            EditorGUILayout.EndHorizontal();
-            GUILayout.Space(12f);
-
-            EditorGUILayout.LabelField("Bind Address", labelStyle);
-            EditorGUILayout.BeginHorizontal();
-            bindAddress = EditorGUILayout.TextField(bindAddress, inputStyle);
-            EditorGUILayout.LabelField("Port", labelStyle, GUILayout.Width(34f));
-            port = EditorGUILayout.IntField(port, inputStyle, GUILayout.Width(120f));
-            EditorGUILayout.EndHorizontal();
-
-            GUILayout.Space(8f);
-            EditorGUILayout.BeginHorizontal();
-            autoSelectPort = EditorGUILayout.Toggle(autoSelectPort, GUILayout.Width(18f));
-            EditorGUILayout.LabelField("Auto-select available port", labelStyle, GUILayout.Width(185f));
-            startWithEditor = EditorGUILayout.Toggle(startWithEditor, GUILayout.Width(18f));
-            EditorGUILayout.LabelField("Start with editor", labelStyle, GUILayout.Width(130f));
-            confirmWriteTools = EditorGUILayout.Toggle(confirmWriteTools, GUILayout.Width(18f));
-            EditorGUILayout.LabelField("Confirm write tools", labelStyle);
-            EditorGUILayout.EndHorizontal();
-
-            GUILayout.Space(16f);
-            EditorGUILayout.LabelField("Endpoint", labelStyle);
-            EditorGUILayout.BeginHorizontal();
-            var endpoint = $"http://{bindAddress}:{Mathf.Clamp(port, 1, 65535)}";
-            EditorGUILayout.SelectableLabel(endpoint, inputStyle, GUILayout.Height(24f));
-            EditorPrefs.SetInt(PortKey, Mathf.Clamp(port, 1, 65535));
-            if (GUILayout.Button("复制", GUILayout.Width(48f), GUILayout.Height(24f)))
+            var actionWidth = 68f;
+            var actionX = position.width - actionWidth - 29f;
+            var active = UnityMcpConnection.IsServiceEnabled;
+            if (GUI.Button(new Rect(actionX, 2f, actionWidth, 20f), active ? "断开" : "连接", EditorStyles.toolbarButton))
             {
-                EditorGUIUtility.systemCopyBuffer = endpoint;
-                AddAudit("Endpoint copied to clipboard.");
+                if (active) UnityMcpConnection.StopService();
+                else UnityMcpConnection.StartService();
             }
-            EditorGUILayout.EndHorizontal();
-            if (GUI.changed) EditorPrefs.SetInt(PortKey, Mathf.Clamp(port, 1, 65535));
-
-            GUILayout.Space(18f);
-            EditorGUILayout.BeginHorizontal();
-            var connected = BridgeRunning();
-            var old = GUI.backgroundColor;
-            GUI.backgroundColor = connected ? new Color(.22f, .45f, .28f) : new Color(.30f, .30f, .30f);
-            var serviceButtonStyle = new GUIStyle(GUI.skin.button) { normal = { textColor = Color.white, background = MakeTexture(connected ? new Color(.08f, .28f, .16f) : new Color(.18f, .22f, .26f)) }, hover = { textColor = Color.white, background = MakeTexture(connected ? new Color(.10f, .36f, .20f) : new Color(.24f, .30f, .36f)) } };
-            if (GUILayout.Button(connected ? "Stop MCP Service" : "Start MCP Service", serviceButtonStyle, GUILayout.Height(30f)))
-            {
-                if (connected) { AIShaderMcpBridge.Stop(); AddAudit("MCP service stopped."); }
-                else { AIShaderMcpBridge.TryStart(); AddAudit($"MCP service started at {endpoint}."); }
-            }
-            GUI.backgroundColor = old;
-            EditorGUILayout.EndHorizontal();
-
-            GUILayout.Space(18f);
-            EditorGUILayout.LabelField("Transport", labelStyle);
-            EditorGUILayout.LabelField("Unity Editor HTTP Bridge + external stdio MCP", mutedStyle);
-            EditorGUILayout.LabelField("Package", mutedStyle);
-            EditorGUILayout.LabelField("com.ai.shader-authoring  0.1.0", mutedStyle);
-            GUILayout.FlexibleSpace();
-            EditorGUILayout.EndVertical();
+            DrawToolbarSeparator(position.width - 25f);
+            var settingsContent = EditorGUIUtility.IconContent("SettingsIcon");
+            settingsContent.tooltip = "打开项目设置";
+            if (GUI.Button(new Rect(position.width - 22f, 2f, 20f, 20f), settingsContent, EditorStyles.toolbarButton))
+                SettingsService.OpenProjectSettings("Project/Player");
         }
 
-        private void DrawAuditPanel()
+        private void DrawNavigator(Rect rect)
         {
-            EditorGUILayout.BeginVertical(panelStyle, GUILayout.MinWidth(480f), GUILayout.Width(Mathf.Clamp(position.width * 0.42f, 480f, 720f)), GUILayout.ExpandHeight(true));
-            EditorGUILayout.LabelField("Activity & Audit", headingStyle);
-            GUILayout.Space(9f);
-            auditScroll = EditorGUILayout.BeginScrollView(auditScroll, monoStyle, GUILayout.ExpandHeight(true));
-            if (audit.Count == 0)
-                EditorGUILayout.LabelField("No activity yet.", mutedStyle);
+            EditorGUI.DrawRect(rect, new Color(0.19f, 0.19f, 0.19f));
+            var searchRect = new Rect(rect.x + 5f, rect.y + 3f, rect.width - 10f, 19f);
+            search = EditorGUI.TextField(searchRect, search, EditorStyles.toolbarSearchField);
+            EditorGUI.DrawRect(new Rect(rect.x, rect.y + 25f, rect.width, 1f), new Color(0.11f, 0.11f, 0.11f));
+
+            var scrollRect = new Rect(rect.x, rect.y + 26f, rect.width, rect.height - 26f);
+            navigatorScroll = GUI.BeginScrollView(scrollRect, navigatorScroll, new Rect(0f, 0f, rect.width - 14f, CalculateNavigatorHeight()));
+            var y = 4f;
+            foreach (var group in new[] { "状态", "命令", "诊断" })
+            {
+                var visible = GetGroupTools(group);
+                if (visible.Count == 0) continue;
+                groupExpanded[group] = EditorGUI.Foldout(new Rect(7f, y, rect.width - 22f, 18f), groupExpanded[group], group, true, groupHeaderStyle);
+                y += 20f;
+                if (!groupExpanded[group]) continue;
+
+                foreach (var index in visible)
+                {
+                    DrawToolRow(new Rect(4f, y, rect.width - 18f, 42f), tools[index], index == selectedTool, index);
+                    y += 43f;
+                }
+                y += 5f;
+            }
+            GUI.EndScrollView();
+        }
+
+        private void DrawToolRow(Rect rect, ToolInfo tool, bool selected, int index)
+        {
+            if (selected)
+            {
+                GUI.DrawTexture(rect, selectedTexture);
+                GUI.DrawTexture(new Rect(rect.x, rect.y, 2f, rect.height), accentTexture);
+            }
+            GUI.Label(new Rect(rect.x + 9f, rect.y + 4f, rect.width - 16f, 17f), tool.Id, selected ? toolSelectedStyle : toolNameStyle);
+            GUI.Label(new Rect(rect.x + 9f, rect.y + 21f, rect.width - 16f, 16f), tool.Summary, mutedStyle);
+            if (GUI.Button(rect, GUIContent.none, GUIStyle.none)) selectedTool = index;
+        }
+
+        private void DrawMain(Rect rect)
+        {
+            EditorGUI.DrawRect(rect, new Color(0.22f, 0.22f, 0.22f));
+            var tool = tools[Mathf.Clamp(selectedTool, 0, tools.Count - 1)];
+            var resultTop = rect.yMax - resultHeight;
+            DrawInspector(new Rect(rect.x, rect.y, rect.width, resultTop - rect.y - 3f), tool);
+            DrawHorizontalSplitter(new Rect(rect.x, resultTop - 2f, rect.width, 3f));
+            DrawResultPanel(new Rect(rect.x, resultTop + 1f, rect.width, rect.yMax - resultTop - 1f), tool);
+        }
+
+        private void DrawInspector(Rect rect, ToolInfo tool)
+        {
+            const float LabelWidth = 104f;
+            const float HelpWidth = 112f;
+            var x = rect.x + 16f;
+            var width = rect.width - 32f;
+            var labelX = x;
+            var controlX = x + LabelWidth;
+            var controlAreaWidth = width - LabelWidth;
+            var actionY = rect.yMax - 29f;
+
+            GUI.Label(new Rect(x, rect.y + 8f, width, 20f), tool.Id, titleStyle);
+            GUI.Label(new Rect(x, rect.y + 29f, width, 18f), tool.Description, descriptionStyle);
+            EditorGUI.DrawRect(new Rect(x, rect.y + 53f, width, 1f), new Color(0.12f, 0.12f, 0.12f));
+            GUI.Label(new Rect(x, rect.y + 61f, width, 17f), "参数", sectionStyle);
+
+            if (tool.Id == "get_editor_state")
+            {
+                var showInlineHelp = controlAreaWidth >= 430f;
+                var controlWidth = showInlineHelp ? controlAreaWidth - HelpWidth - 8f : controlAreaWidth;
+                DrawInspectorLabel(labelX, rect.y + 84f, "Format");
+                formatIndex = EditorGUI.Popup(new Rect(controlX, rect.y + 82f, controlWidth, 20f), formatIndex, new[] { "full", "no scripts", "no hierarchy" });
+                if (showInlineHelp)
+                    GUI.Label(new Rect(controlX + controlWidth + 8f, rect.y + 84f, HelpWidth, 17f), "可选，默认 full", mutedStyle);
+                else
+                    GUI.Label(new Rect(controlX, rect.y + 104f, controlAreaWidth, 16f), "可选，默认 full", mutedStyle);
+
+                var checkboxY = showInlineHelp ? rect.y + 108f : rect.y + 122f;
+                DrawInspectorLabel(labelX, checkboxY, "Options");
+                var optionColumnWidth = Mathf.Max(155f, controlAreaWidth * 0.5f);
+                includeScripts = EditorGUI.Toggle(new Rect(controlX, checkboxY, 18f, 18f), includeScripts);
+                GUI.Label(new Rect(controlX + 23f, checkboxY, optionColumnWidth - 23f, 18f), "Include scripts", mutedStyle);
+                includeHierarchy = EditorGUI.Toggle(new Rect(controlX + optionColumnWidth, checkboxY, 18f, 18f), includeHierarchy);
+                GUI.Label(new Rect(controlX + optionColumnWidth + 23f, checkboxY, controlAreaWidth - optionColumnWidth - 23f, 18f), "Include hierarchy", mutedStyle);
+            }
+            else if (tool.Id == "execute_editor_command")
+            {
+                DrawInspectorLabel(labelX, rect.y + 84f, "Code *");
+                commandCode = EditorGUI.TextField(new Rect(controlX, rect.y + 82f, controlAreaWidth, 20f), commandCode);
+                GUI.Label(new Rect(controlX, rect.y + 106f, controlAreaWidth, 17f), "将在 Unity Editor 中执行。", mutedStyle);
+            }
             else
             {
-                for (var i = audit.Count - 1; i >= 0; i--)
-                    EditorGUILayout.LabelField(audit[i], labelStyle);
+                DrawInspectorLabel(labelX, rect.y + 84f, "Count");
+                GUI.Label(new Rect(controlX, rect.y + 84f, controlAreaWidth, 17f), "使用本地日志缓冲区全部记录", mutedStyle);
             }
-            EditorGUILayout.EndScrollView();
-            GUILayout.Space(7f);
-            EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("Console entries: " + AIShaderConsoleService.Count + "   errors: " + AIShaderConsoleService.ErrorCount, mutedStyle);
-            GUILayout.FlexibleSpace();
-            if (GUILayout.Button("Clear audit", GUILayout.Width(90f))) { audit.Clear(); AIShaderConsoleService.Clear(); AddAudit("Console cache cleared."); }
-            EditorGUILayout.EndHorizontal();
-            EditorGUILayout.EndVertical();
+
+            EditorGUI.DrawRect(new Rect(x, actionY - 7f, width, 1f), new Color(0.12f, 0.12f, 0.12f));
+            var connected = UnityMcpConnection.IsConnected;
+            EditorGUI.BeginDisabledGroup(!connected || running);
+            if (GUI.Button(new Rect(x, actionY, 90f, 22f), running ? "运行中…" : "▶  运行工具", runButtonStyle)) RunTool(tool);
+            EditorGUI.EndDisabledGroup();
+            if (!connected) GUI.Label(new Rect(x + 100f, actionY + 3f, width - 100f, 17f), "服务未连接，无法运行工具。", mutedStyle);
+            EditorGUI.DrawRect(new Rect(x, rect.yMax - 1f, width, 1f), new Color(0.12f, 0.12f, 0.12f));
         }
 
-        private void DrawToolsPage()
+        private void DrawResultPanel(Rect rect, ToolInfo tool)
         {
-            GUILayout.Space(4f);
-            EditorGUILayout.BeginHorizontal(GUILayout.ExpandHeight(true));
-            DrawToolList();
-            GUILayout.Space(5f);
-            DrawToolDetails();
-            GUILayout.Space(5f);
-            DrawSchemaPanel();
-            EditorGUILayout.EndHorizontal();
+            EditorGUI.DrawRect(rect, new Color(0.16f, 0.16f, 0.16f));
+            GUI.DrawTexture(new Rect(rect.x, rect.y, rect.width, 23f), toolbarTexture);
+            GUI.Label(new Rect(rect.x + 8f, rect.y + 3f, 36f, 18f), "结果", toolbarLabel);
+            EditorGUI.DrawRect(new Rect(rect.x + 47f, rect.y + 3f, 1f, 17f), new Color(0.20f, 0.20f, 0.20f));
+            resultView = GUI.Toolbar(new Rect(rect.x + 53f, rect.y + 2f, 86f, 20f), resultView, new[] { "JSON", "Tree" }, EditorStyles.toolbarButton);
+            if (GUI.Button(new Rect(rect.x + 145f, rect.y + 2f, 30f, 20f), "复制", EditorStyles.toolbarButton)) EditorGUIUtility.systemCopyBuffer = resultText;
+            if (GUI.Button(new Rect(rect.x + 177f, rect.y + 2f, 30f, 20f), "清空", EditorStyles.toolbarButton)) ClearResult();
+            if (resultState == ResultState.Success) GUI.Label(new Rect(rect.x + 217f, rect.y + 3f, 180f, 18f), elapsedMilliseconds + " ms   " + resultTimestamp, mutedStyle);
+
+            var content = new Rect(rect.x + 16f, rect.y + 23f, rect.width - 32f, rect.height - 23f);
+            if (resultState == ResultState.Empty)
+            {
+                DrawCenteredMessage(content, "尚无运行结果", "运行工具后，结果会显示在此面板中。", false, "›_");
+                return;
+            }
+            if (resultState == ResultState.Loading)
+            {
+                DrawCenteredMessage(content, "正在运行工具…", "正在等待 Unity Editor 返回结果。", true, "…");
+                return;
+            }
+            if (resultState == ResultState.Error)
+            {
+                DrawError(content, tool);
+                return;
+            }
+
+            GUI.DrawTexture(content, codeTexture);
+            var displayText = resultView == 0 ? resultText : BuildTreePreview(resultText);
+            var contentHeight = Mathf.Max(content.height, EstimateHeight(displayText, content.width - 30f));
+            resultScroll = GUI.BeginScrollView(content, resultScroll, new Rect(0f, 0f, content.width - 15f, contentHeight));
+            GUI.Label(new Rect(9f, 7f, content.width - 32f, contentHeight - 10f), displayText, codeStyle);
+            GUI.EndScrollView();
         }
 
-        private void DrawToolList()
+        private void DrawError(Rect rect, ToolInfo tool)
         {
-            EditorGUILayout.BeginVertical(panelStyle, GUILayout.Width(Mathf.Clamp(position.width * .29f, 300f, 430f)), GUILayout.ExpandHeight(true));
-            EditorGUILayout.LabelField("Tools", headingStyle);
-            GUILayout.Space(8f);
-            EditorGUILayout.BeginHorizontal();
-            GUILayout.Label("⌕", mutedStyle, GUILayout.Width(18f));
-            searchText = EditorGUILayout.TextField(searchText, inputStyle);
-            EditorGUILayout.EndHorizontal();
-            GUILayout.Space(9f);
-            EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("Tool", tableHeaderStyle);
-            EditorGUILayout.LabelField("State", tableHeaderStyle, GUILayout.Width(55f));
-            EditorGUILayout.EndHorizontal();
-            toolScroll = EditorGUILayout.BeginScrollView(toolScroll, GUIStyle.none);
-            var currentGroup = string.Empty;
+            var errorColor = new Color(0.47f, 0.22f, 0.22f);
+            EditorGUI.DrawRect(new Rect(rect.x + 6f, rect.y + 7f, rect.width - 12f, 24f), errorColor);
+            GUI.Label(new Rect(rect.x + 13f, rect.y + 10f, 60f, 17f), "错误", new GUIStyle(statusStyle) { normal = { textColor = new Color(1f, 0.78f, 0.76f) } });
+            GUI.Label(new Rect(rect.x + 59f, rect.y + 10f, rect.width - 150f, 17f), errorText, mutedStyle);
+            if (GUI.Button(new Rect(rect.xMax - 79f, rect.y + 9f, 67f, 19f), "重试", EditorStyles.miniButton)) RunTool(tool);
+            GUI.DrawTexture(new Rect(rect.x + 6f, rect.y + 38f, rect.width - 12f, rect.height - 45f), codeTexture);
+            GUI.Label(new Rect(rect.x + 14f, rect.y + 47f, rect.width - 28f, rect.height - 55f), "建议：检查服务连接和参数，然后重新运行。\n\n" + errorText, codeStyle);
+        }
+
+        private void RunTool(ToolInfo tool)
+        {
+            running = true;
+            resultState = ResultState.Loading;
+            errorText = string.Empty;
+            Repaint();
+            try
+            {
+                var stopwatch = Stopwatch.StartNew();
+                resultText = UnityMcpConnection.RunDashboardTool(tool.Id, tool.Id == "execute_editor_command" ? commandCode : null);
+                stopwatch.Stop();
+                elapsedMilliseconds = stopwatch.ElapsedMilliseconds;
+                resultTimestamp = DateTime.Now.ToString("HH:mm:ss");
+                resultState = ResultState.Success;
+            }
+            catch (Exception exception)
+            {
+                errorText = exception.Message;
+                resultState = ResultState.Error;
+            }
+            finally { running = false; }
+        }
+
+        private void ClearResult()
+        {
+            resultState = ResultState.Empty;
+            resultText = string.Empty;
+            errorText = string.Empty;
+            elapsedMilliseconds = 0;
+            resultTimestamp = string.Empty;
+            resultScroll = Vector2.zero;
+        }
+
+        private void DrawCenteredMessage(Rect rect, string title, string detail, bool loading = false, string icon = null)
+        {
+            var titleStyle = new GUIStyle(mutedStyle) { alignment = TextAnchor.MiddleCenter, normal = { textColor = loading ? new Color(0.78f, 0.78f, 0.78f) : new Color(0.70f, 0.70f, 0.70f) } };
+            if (!string.IsNullOrEmpty(icon))
+                GUI.Label(new Rect(rect.x, rect.center.y - 39f, rect.width, 18f), icon, new GUIStyle(mutedStyle) { alignment = TextAnchor.MiddleCenter, fontSize = 14, normal = { textColor = new Color(0.33f, 0.33f, 0.33f) } });
+            GUI.Label(new Rect(rect.x, rect.center.y - 17f, rect.width, 18f), title, titleStyle);
+            GUI.Label(new Rect(rect.x, rect.center.y + 3f, rect.width, 17f), detail, new GUIStyle(mutedStyle) { alignment = TextAnchor.MiddleCenter, fontSize = 10 });
+        }
+
+        private void DrawInspectorLabel(float x, float y, string label)
+        {
+            GUI.Label(new Rect(x, y, 100f, 18f), label, new GUIStyle(mutedStyle) { alignment = TextAnchor.MiddleRight });
+        }
+
+        private List<int> GetGroupTools(string group)
+        {
+            var result = new List<int>();
             for (var i = 0; i < tools.Count; i++)
             {
                 var tool = tools[i];
-                if (!string.IsNullOrEmpty(searchText) && tool.Name.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) < 0 && tool.Description.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) < 0) continue;
-                if (tool.Group != currentGroup)
-                {
-                    currentGroup = tool.Group;
-                    EditorGUILayout.LabelField("⌄  " + currentGroup, groupStyle);
-                }
-                var selected = selectedTool == i;
-                var row = GUILayoutUtility.GetRect(0f, 25f, GUILayout.ExpandWidth(true));
-                if (selected) EditorGUI.DrawRect(row, new Color(.16f, .27f, .23f));
-                EditorGUI.DrawRect(new Rect(row.x, row.y, 2f, row.height), selected ? Green : new Color(.22f, .22f, .22f));
-                if (GUI.Button(new Rect(row.x + 5f, row.y, row.width - 62f, row.height), tool.Name, selected ? selectedToolButtonStyle : toolButtonStyle)) selectedTool = i;
-                GUI.Label(new Rect(row.xMax - 52f, row.y + 4f, 48f, 18f), "Ready", mutedStyle);
+                if (tool.Group == group && (string.IsNullOrEmpty(search) || tool.Id.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0 || tool.Summary.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0)) result.Add(i);
             }
-            EditorGUILayout.EndScrollView();
-            EditorGUILayout.EndVertical();
+            return result;
         }
 
-        private void DrawToolDetails()
+        private float CalculateNavigatorHeight()
         {
-            EditorGUILayout.BeginVertical(panelStyle, GUILayout.Width(Mathf.Clamp(position.width * .29f, 300f, 430f)), GUILayout.ExpandHeight(true));
-            EditorGUILayout.LabelField("Tool Details", new GUIStyle(headingStyle) { normal = { textColor = Purple } });
-            GUILayout.Space(15f);
-            if (selectedTool < 0 || selectedTool >= tools.Count)
+            var height = 8f;
+            foreach (var group in new[] { "状态", "命令", "诊断" })
             {
-                EditorGUILayout.LabelField("Select a tool", labelStyle);
-                GUILayout.FlexibleSpace();
+                var count = GetGroupTools(group).Count;
+                if (count == 0) continue;
+                height += 20f + (groupExpanded[group] ? count * 43f + 5f : 0f);
             }
-            else
-            {
-                var tool = tools[selectedTool];
-                EditorGUILayout.LabelField(tool.Name, new GUIStyle(headingStyle) { normal = { textColor = Purple } });
-                GUILayout.Space(10f);
-                EditorGUILayout.LabelField(tool.Description, labelStyle);
-                GUILayout.Space(20f);
-                DrawKeyValue("Group", tool.Group);
-                DrawKeyValue("State", "Ready");
-                DrawKeyValue("Transport", "MCP HTTP Bridge");
-                DrawKeyValue("Permission", PermissionFor(tool));
-                DrawKeyValue("Risk", RiskFor(tool));
-                DrawKeyValue("Method", tool.Name);
-            }
-            EditorGUILayout.EndVertical();
+            return height;
         }
 
-        private void DrawSchemaPanel()
+        private void HandleSplitters()
         {
-            EditorGUILayout.BeginVertical(panelStyle, GUILayout.MinWidth(300f), GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true));
-            EditorGUILayout.LabelField("Input JSON Schema", new GUIStyle(headingStyle) { normal = { textColor = new Color(.62f, .70f, .82f) } });
-            GUILayout.Space(9f);
-            var schema = selectedTool >= 0 && selectedTool < tools.Count ? tools[selectedTool].Schema : "";
-            EditorGUILayout.TextArea(schema, monoStyle, GUILayout.ExpandHeight(true));
-            EditorGUILayout.EndVertical();
+            var mouse = Event.current;
+            var vertical = new Rect(navigatorWidth - 3f, ToolbarHeight, 7f, position.height - ToolbarHeight);
+            var horizontalY = position.height - resultHeight - 2f;
+            var horizontal = new Rect(navigatorWidth, horizontalY - 3f, position.width - navigatorWidth, 7f);
+            EditorGUIUtility.AddCursorRect(vertical, MouseCursor.ResizeHorizontal);
+            EditorGUIUtility.AddCursorRect(horizontal, MouseCursor.ResizeVertical);
+            if (mouse.type == EventType.MouseDown && vertical.Contains(mouse.mousePosition)) { draggingNavigator = true; mouse.Use(); }
+            if (mouse.type == EventType.MouseDown && horizontal.Contains(mouse.mousePosition)) { draggingResult = true; mouse.Use(); }
+            if (mouse.type == EventType.MouseDrag && draggingNavigator) { navigatorWidth = Mathf.Clamp(mouse.mousePosition.x, MinimumNavigatorWidth, Mathf.Min(MaximumNavigatorWidth, position.width - 360f)); mouse.Use(); Repaint(); }
+            if (mouse.type == EventType.MouseDrag && draggingResult) { resultHeight = Mathf.Clamp(position.height - mouse.mousePosition.y, MinimumResultHeight, Mathf.Max(MinimumResultHeight, position.height - ToolbarHeight - InspectorHeight)); mouse.Use(); Repaint(); }
+            if (mouse.type == EventType.MouseUp) { draggingNavigator = false; draggingResult = false; }
         }
 
-        private void DrawBottomStatus()
+        private void DrawVerticalSplitter(Rect rect) => GUI.DrawTexture(rect, splitterTexture);
+        private void DrawHorizontalSplitter(Rect rect) => GUI.DrawTexture(rect, splitterTexture);
+        private void DrawToolbarSeparator(float x) => EditorGUI.DrawRect(new Rect(x, 3f, 1f, 17f), new Color(0.20f, 0.20f, 0.20f));
+
+        private static string BuildTreePreview(string json)
         {
-            var connected = BridgeRunning();
-            EditorGUI.DrawRect(new Rect(0f, position.height - 38f, 8f, 38f), connected ? Green : Red);
-            GUILayout.BeginArea(new Rect(18f, position.height - 34f, position.width - 30f, 30f));
-            EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("MCP", labelStyle, GUILayout.Width(40f));
-            EditorGUILayout.LabelField(connected ? "●" : "○", new GUIStyle(labelStyle) { normal = { textColor = connected ? Green : Red } }, GUILayout.Width(20f));
-            GUILayout.FlexibleSpace();
-            if (GUILayout.Button("▶", bottomButtonStyle, GUILayout.Width(30f), GUILayout.Height(22f))) { AIShaderMcpBridge.TryStart(); AddAudit("MCP service start requested."); }
-            if (GUILayout.Button("■", bottomButtonStyle, GUILayout.Width(30f), GUILayout.Height(22f))) { AIShaderMcpBridge.Stop(); AddAudit("MCP service stop requested."); }
-            EditorGUILayout.EndHorizontal();
-            GUILayout.EndArea();
+            return "Root\n" + json.Replace("{", "├─ ").Replace("}", "\n└─").Replace(",", "\n├─").Replace("[", "[ ").Replace("]", " ]");
         }
 
-        private static string PermissionFor(ToolInfo tool)
+        private static float EstimateHeight(string text, float width)
         {
-            return tool.Name.Contains("write") || tool.Name.Contains("create") || tool.Name.Contains("capture") || tool.Name.Contains("refresh") ? "Project / Asset operation" : "Read-only";
-        }
-
-        private static string RiskFor(ToolInfo tool)
-        {
-            return tool.Name.Contains("write") || tool.Name.Contains("create") ? "High" : tool.Name.Contains("capture") || tool.Name.Contains("refresh") ? "Medium" : "Low";
-        }
-
-        private void DrawKeyValue(string key, string value)
-        {
-            EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField(key, mutedStyle, GUILayout.Width(75f));
-            EditorGUILayout.LabelField(value, labelStyle);
-            EditorGUILayout.EndHorizontal();
-        }
-
-        private bool BridgeRunning() => EditorPrefs.GetBool("AIShader.McpBridgeStarted", false);
-
-        private void AddAudit(string message)
-        {
-            audit.Add(DateTime.Now.ToString("HH:mm:ss") + "  " + message);
-            if (audit.Count > 200) audit.RemoveAt(0);
+            return Mathf.Max(60f, Mathf.Ceil(text.Length / Mathf.Max(18f, width / 7f)) * 17f + 18f);
         }
 
         private void CreateStyles()
         {
-            tabStyle = new GUIStyle(EditorStyles.toolbarButton) { fontSize = 12, alignment = TextAnchor.MiddleCenter, normal = { textColor = Text }, fixedHeight = 32f };
-            activeTabStyle = new GUIStyle(tabStyle) { normal = { textColor = Color.white, background = MakeTexture(new Color(.12f, .12f, .12f)) } };
-            panelStyle = new GUIStyle("box") { padding = new RectOffset(8, 8, 10, 8), normal = { background = MakeTexture(Panel) } };
-            inputStyle = new GUIStyle(EditorStyles.textField) { fontSize = 12, normal = { textColor = Text, background = MakeTexture(Input) } };
-            headingStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 13, normal = { textColor = Cyan } };
-            labelStyle = new GUIStyle(EditorStyles.label) { fontSize = 12, wordWrap = true, normal = { textColor = Text } };
-            mutedStyle = new GUIStyle(EditorStyles.label) { fontSize = 11, wordWrap = true, normal = { textColor = Muted } };
-            monoStyle = new GUIStyle(EditorStyles.textArea) { fontSize = 11, wordWrap = true, normal = { textColor = Text, background = MakeTexture(new Color(.075f, .075f, .075f)) } };
-            tableHeaderStyle = new GUIStyle(EditorStyles.label) { fontSize = 10, alignment = TextAnchor.MiddleLeft, padding = new RectOffset(8, 4, 3, 3), normal = { textColor = Muted } };
-            toolRowStyle = new GUIStyle(EditorStyles.label) { padding = new RectOffset(4, 4, 3, 3), normal = { textColor = Text, background = MakeTexture(new Color(.10f, .12f, .11f)) } };
-            selectedToolStyle = new GUIStyle(toolRowStyle) { normal = { textColor = Color.white, background = MakeTexture(new Color(.15f, .25f, .21f)) } };
-            toolButtonStyle = new GUIStyle(EditorStyles.label) { fontSize = 11, alignment = TextAnchor.MiddleLeft, padding = new RectOffset(8, 4, 4, 3), normal = { textColor = new Color(.72f, .72f, .72f) } };
-            selectedToolButtonStyle = new GUIStyle(toolButtonStyle) { normal = { textColor = Color.white } };
-            groupStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 11, padding = new RectOffset(5, 6, 7, 4), normal = { textColor = new Color(.68f, .72f, .78f) } };
-            bottomButtonStyle = new GUIStyle(EditorStyles.miniButton) { fontSize = 12, alignment = TextAnchor.MiddleCenter, normal = { textColor = new Color(.86f, .86f, .86f), background = MakeTexture(new Color(.22f, .22f, .22f)) }, hover = { textColor = Color.white, background = MakeTexture(new Color(.30f, .30f, .30f)) }, active = { textColor = Color.white, background = MakeTexture(new Color(.15f, .15f, .15f)) } };
+            selectedTexture = MakeTexture(new Color(0.25f, 0.31f, 0.37f));
+            accentTexture = MakeTexture(new Color(0.23f, 0.45f, 0.66f));
+            splitterTexture = MakeTexture(new Color(0.11f, 0.11f, 0.11f));
+            codeTexture = MakeTexture(new Color(0.125f, 0.125f, 0.125f));
+            toolbarTexture = MakeTexture(new Color(0.25f, 0.25f, 0.25f));
+            toolbarLabel = new GUIStyle(EditorStyles.miniLabel) { fontSize = 11, fontStyle = FontStyle.Bold, normal = { textColor = new Color(0.88f, 0.88f, 0.88f) } };
+            titleStyle = new GUIStyle(EditorStyles.label) { fontSize = 16, fontStyle = FontStyle.Bold, normal = { textColor = new Color(0.91f, 0.91f, 0.91f) } };
+            descriptionStyle = new GUIStyle(EditorStyles.label) { fontSize = 12, normal = { textColor = new Color(0.82f, 0.82f, 0.82f) } };
+            mutedStyle = new GUIStyle(EditorStyles.miniLabel) { fontSize = 11, normal = { textColor = new Color(0.64f, 0.64f, 0.64f) } };
+            sectionStyle = new GUIStyle(EditorStyles.miniBoldLabel) { fontSize = 11, normal = { textColor = new Color(0.78f, 0.78f, 0.78f) } };
+            toolNameStyle = new GUIStyle(EditorStyles.miniLabel) { fontSize = 11, normal = { textColor = new Color(0.84f, 0.84f, 0.84f) } };
+            toolSelectedStyle = new GUIStyle(toolNameStyle) { normal = { textColor = Color.white } };
+            codeStyle = new GUIStyle(EditorStyles.textArea) { fontSize = 11, wordWrap = true, padding = new RectOffset(0, 0, 0, 0), normal = { background = null, textColor = new Color(0.84f, 0.84f, 0.84f) } };
+            statusStyle = new GUIStyle(EditorStyles.miniBoldLabel) { fontSize = 11 };
+            groupHeaderStyle = new GUIStyle(EditorStyles.foldout) { fontSize = 11, fontStyle = FontStyle.Bold, normal = { textColor = new Color(0.71f, 0.71f, 0.71f) }, onNormal = { textColor = new Color(0.71f, 0.71f, 0.71f) } };
+            runButtonStyle = new GUIStyle(EditorStyles.miniButton) { fontSize = 11, fontStyle = FontStyle.Bold, normal = { background = MakeTexture(new Color(0.23f, 0.45f, 0.66f)), textColor = new Color(0.98f, 0.98f, 0.98f) }, hover = { background = MakeTexture(new Color(0.27f, 0.50f, 0.71f)), textColor = Color.white } };
         }
 
         private static Texture2D MakeTexture(Color color)
         {
-            var texture = new Texture2D(1, 1) { hideFlags = HideFlags.HideAndDontSave };
-            texture.SetPixel(0, 0, color); texture.Apply(); return texture;
+            var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false) { hideFlags = HideFlags.HideAndDontSave };
+            texture.SetPixel(0, 0, color);
+            texture.Apply();
+            return texture;
         }
 
-        private void BuildTools()
+        private static void DestroyTexture(ref Texture2D texture)
         {
-            tools.Clear();
-            Add("Project", "get_unity_status", "读取 Unity 版本、场景、编译状态和 Console 错误数量", "{}");
-            Add("Project", "get_project_context", "读取用户确认的 Shader、Include、Pipeline 和生成路径", "{}");
-            Add("Project", "refresh_assets", "刷新 AssetDatabase 并触发资源导入", "{}");
-            Add("Shader", "write_generated_text", "写入配置生成目录下的 Shader/HLSL/Material 文件", "{\n  \"path\": \"Assets/AIShader/Generated/Test.shader\",\n  \"content\": \"...\"\n}");
-            Add("Console", "clear_console_logs", "清理当前迭代前的 Console 缓存", "{}");
-            Add("Console", "get_console_logs", "读取最近 Unity Console 日志和堆栈", "{\n  \"limit\": 200\n}");
-            Add("Console", "get_console_errors", "读取 Error、Exception 和 Assert", "{\n  \"limit\": 200\n}");
-            Add("Console", "get_console_warnings", "读取 Warning 日志", "{\n  \"limit\": 200\n}");
-            Add("Validation", "create_validation_scene", "创建 PBR 分阶段验证场景和 Sphere", "{}");
-            Add("Validation", "capture_validation_frame", "捕获 PNG 并生成 Manifest", "{}");
+            if (texture == null) return;
+            DestroyImmediate(texture);
+            texture = null;
         }
-
-        private void Add(string group, string name, string description, string schema) => tools.Add(new ToolInfo(group, name, description, schema));
     }
 }
 #endif

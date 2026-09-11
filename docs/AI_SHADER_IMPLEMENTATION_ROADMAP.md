@@ -1059,53 +1059,38 @@ ProjectSettings/AIShaderProjectContext.json
 - 尚未接入 PNG 图像差异分析；
 - 尚未实现 ProjectShaderProfile 分析器；
 - 尚未实现生成 Shader 和 PBR Stage 2；
-- MCP Console/HTTP Bridge 已加入 Package；
-- 外部 stdio MCP Server 已加入 `Tools/ai_shader_mcp_server.py`，负责将标准 MCP 请求转发到 Unity HTTP Bridge；
-- 已加入 Unity Editor MCP Dashboard：`AI Shader/MCP Dashboard`，采用接近 Unity Profiler 的深色多面板布局，包含顶部工具栏、Captures List、MCP Modules、Timeline、Hierarchy、Console 和 Details Inspector；
-- 已移除独立的 Create Validation Scene、Capture Validation Frame、Project Context 和 MCP Start/Stop 菜单入口，统一从 MCP Dashboard 工具栏进入；
-- Dashboard 已参考 Godot MCP Control Center 的 UI 布局重构为 `MCP / 工具` 标签页：MCP 页为 Server & Connection + Activity & Audit 左右分栏，工具页为分类 Tree + Tool Details + Input JSON Schema 三栏；仅复用布局思想，功能仍全部针对 Unity/URP。
+- 原 MCP Console/HTTP Bridge、受限文件写入、Shader 验证和截图工具已移除；
+- 已切换到 `Tools/unity-mcp-server` 的 stdio MCP Server + WebSocket 实现；
+- Unity 端通过 `UnityMcpConnection.cs` 主动连接 `ws://localhost:8080`，发送编辑器状态和日志，并接收编辑器命令；
+- 已保留 Unity MCP Dashboard，并将其状态、工具目录和连接操作适配为 WebSocket 模式；
+- 当前 MCP 工具为 `get_editor_state`、`execute_editor_command` 与 `get_logs`；
 - Unity Editor 启动和 MCP 端到端验证仍待执行；
 - Checkpoint 和自动 Loop 尚未实现。
 
-### MCP Console 与本地 Bridge（已加入，待 Unity 验证）
+### UnityMCP WebSocket（已切换，待 Unity 验证）
 
-Package 已新增：
-
-```text
-Packages/com.ai.shader-authoring/Editor/AIShaderConsoleBridge.cs
-Packages/com.ai.shader-authoring/Editor/AIShaderCompilationBridge.cs
-Packages/com.ai.shader-authoring/Editor/AIShaderMcpBridge.cs
-```
-
-已提供的 MCP MVP 方法：
+Package 使用：
 
 ```text
-ping
-get_unity_status
-clear_console_logs
-get_console_logs
-get_console_errors
-get_console_warnings
-refresh_assets
-get_project_context
-write_generated_text
-create_validation_scene
-capture_validation_frame
+Packages/com.ai.shader-authoring/Editor/UnityMcpConnection.cs
+Tools/unity-mcp-server/src/index.ts
 ```
 
-Unity Console Bridge 使用 `Application.logMessageReceivedThreaded` 缓存最近 1000 条日志，并区分 Log、Warning、Error、Exception、Assert。HTTP Bridge 默认监听：
+通信链路：
 
 ```text
-http://127.0.0.1:47831/mcp
+MCP client ⇄ stdio server ⇄ ws://localhost:8080 ⇄ Unity Editor
 ```
 
-请求格式：
+已提供的 MCP 工具：
 
-```json
-{"method":"get_console_errors","params":"{}"}
+```text
+get_editor_state
+execute_editor_command
+get_logs
 ```
 
-`write_generated_text` 只允许写入 `generatedAssetsPath` 及其子目录；路径必须位于 `Assets/` 下，不允许 `..` 穿越。Unity API 请求会从 HTTP 线程排队到 `EditorApplication.update` 主线程执行。
+Unity 插件每秒发送编辑器状态，转发日志，并在主线程上处理服务端的编辑器命令。`execute_editor_command` 会动态编译并执行任意 C#，因此只能连接可信的本地 MCP 客户端。
 
 ### 工程路径确认流程
 

@@ -1,0 +1,28 @@
+{
+  "name": "UnityMCP",
+  "version": "0.1.0",
+  "description": "MCP for talking with Unity Editor via a Unity plugin + an MCP server",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "UnityMCP": "./build/index.js"
+  },
+  "files": [
+    "build"
+  ],
+  "scripts": {
+    "build": "tsc && node --input-type=module -e \"import { chmod } from 'fs/promises'; await chmod('build/index.js', '755');\"",
+    "prepare": "npm run build",
+    "watch": "tsc --watch",
+    "inspector": "npx @modelcontextprotocol/inspector build/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "0.6.0",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "@types/ws": "^8.18.0",
+    "typescript": "^5.3.3"
+  }
+}
