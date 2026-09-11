@@ -691,35 +691,54 @@ ShaderCodePlan
 
 ## Step 7：受限执行
 
-使用 [`execute_editor_command`](../../Tools/unity-mcp-server/src/index.ts:406) 执行计划中允许的 Unity Editor C#。命令必须按以下类别标记：
+执行必须优先使用**结构化白名单工具**，而不是任意 C#。只有白名单无法表达、且已获得显式授权的诊断或维护场景，才允许使用 [`execute_editor_command`](../../Tools/unity-mcp-server/src/index.ts:432)（裸 C# 在 Unity 6 上不作为常规执行路径）。执行类别与对应工具：
+
+| 类别 | 结构化工具 |
+| --- | --- |
+| `READ_ANALYSIS` | [`get_asset_revision`](../../Tools/unity-mcp-server/src/index.ts:605)、[`inspect_shader_structure`](../../Tools/unity-mcp-server/src/index.ts:604) |
+| `WRITE_SHADER` | [`write_generated_text_asset`](../../Tools/unity-mcp-server/src/index.ts:606) |
+| `WRITE_MATERIAL` | `write_generated_text_asset`（`.mat` 属受控生成资产） |
+| `REFRESH_AND_COMPILE` | [`refresh_and_compile_assets`](../../Tools/unity-mcp-server/src/index.ts:607) |
+| `CAPTURE_EVIDENCE` | [`capture_validation`](../../Tools/unity-mcp-server/src/index.ts:609) |
+| `SAVE_CHECKPOINT` | [`create_shader_checkpoint`](../../Tools/unity-mcp-server/src/index.ts:610) |
+
+### 执行后强制 Console 检查（硬性门禁）
+
+每次产生写入（`WRITE_SHADER` / `WRITE_MATERIAL`）后，必须执行并记录：
+
+1. 读取命令返回值与资产 revision。
+2. 调用 [`refresh_and_compile_assets`](../../Tools/unity-mcp-server/src/index.ts:607)（异步 job），并用 [`get_unity_job`](../../Tools/unity-mcp-server/src/index.ts:599) 轮询到 `succeeded` / `failed`，读取 `diagnostics`、`errorCount`、`warningCount`。
+3. 调用 [`get_console_diagnostics`](../../Tools/unity-mcp-server/src/index.ts:611)（建议带 `assetPaths` 限定到本次生成资产，`includeWarnings: true`），获取 Console Error / Warning 与 Shader 编译错误状态。
+4. 判定：
+   - `errorCount == 0`：Console 干净，方可进入 Step 8 的视觉验证。
+   - `errorCount > 0`：**禁止**进行任何视觉判断，进入修复循环。
+
+### Console 报错修复循环
 
 ```text
-READ_ANALYSIS
-WRITE_SHADER
-WRITE_MATERIAL
-CONFIGURE_VALIDATION_SCENE
-REFRESH_AND_COMPILE
-CAPTURE_EVIDENCE
-SAVE_CHECKPOINT
+读取 get_console_diagnostics 的 diagnostics
+→ 定位报错资产与源码位置（include / CBUFFER / 语义 / 渲染状态）
+→ 在 Code Plan 白名单内修改
+→ write_generated_text_asset（携带新的 baseRevision）
+→ refresh_and_compile_assets → get_unity_job
+→ get_console_diagnostics 复检
 ```
 
-每次命令执行后：
-
-1. 读取命令返回值。
-2. 调用 [`get_logs`](../../Tools/unity-mcp-server/src/index.ts:508) 获取新增 Console 信息。
-3. 若命令、导入或编译失败，停止后续视觉判断并进入 `revise` 或 `blocked`。
+- 最多循环 `3` 轮；仍未清零则进入 `blocked`，并保留失败版本、差异与完整诊断作为证据。
+- 修复不得超出 Code Plan 的 `allowedFiles`；需要新资产时先更新 Code Plan 并重新授权。
+- 每次修复都必须记录：命中的诊断、修改点、修改前后 revision、复检结果。
 
 ## Step 8：验证与 Checkpoint
 
 ### 固定验证顺序
 
 1. 静态检查：计划白名单、锚点、属性、渲染状态、禁止特性。
-2. Unity 刷新与 Shader 编译。
-3. Console 读取：确认无新增 Error。
+2. Unity 刷新与 Shader 编译（`refresh_and_compile_assets` → `get_unity_job`）。
+3. Console 读取（`get_console_diagnostics`）：确认无新增 Error；有错则回到 Step 7 修复循环。
 4. 在确定性验证场景中配置球体、相机、主光、环境和材质。
 5. 输出当前阶段的目标图、参考图、Debug 图。
 6. 运行当前阶段所需的参数扫描。
-7. 保存 `PASS`、`REVISE` 或 `BLOCKED` 及其证据。
+7. 保存 `PASS`、`REVISE` 或 `BLOCKED` 及其证据（必须包含第 2、3 步的诊断结果）。
 
 ### PBR 阶段顺序
 

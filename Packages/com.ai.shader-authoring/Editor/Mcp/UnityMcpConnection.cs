@@ -208,6 +208,18 @@ namespace UnityMcp.Editor
             }
         }
 
+        /// <summary>Returns a stable snapshot of the recent Unity console entries for structured diagnostics.</summary>
+        public static object[] GetRecentLogSnapshot()
+        {
+            lock (RecentLogs)
+            {
+                return RecentLogs.ToArray();
+            }
+        }
+
+        /// <summary>Serializes the recent Unity console snapshot so the Editor assembly stays free of JSON parsing concerns.</summary>
+        public static string GetRecentLogSnapshotJson() => JsonSerializer.Serialize(GetRecentLogSnapshot());
+
         private static void HandleLogMessage(string message, string stackTrace, LogType type)
         {
             var entry = new LogEntry

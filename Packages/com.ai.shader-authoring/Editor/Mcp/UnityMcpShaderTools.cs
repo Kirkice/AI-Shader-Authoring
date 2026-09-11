@@ -6,7 +6,9 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Tasks;
 using UnityEditor;
+using UnityEditor.Rendering;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -23,7 +25,7 @@ namespace UnityMcp.Editor
         private const string KnowledgeRoot = "Artifacts/ShaderKnowledgeBase/";
         private const string RunsRoot = "Artifacts/ShaderRuns/";
         private static readonly Dictionary<string, JobRecord> Jobs = new Dictionary<string, JobRecord>();
-        private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true };
+        private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, IncludeFields = true, WriteIndented = true };
 
         internal static object Handle(string toolName, JsonElement args)
         {
@@ -43,6 +45,7 @@ namespace UnityMcp.Editor
                 case "capture_validation": return StartCapture(args);
                 case "create_shader_checkpoint": return StartCheckpoint(args);
                 case "restore_shader_checkpoint": return RestoreCheckpoint(args);
+                case "get_console_diagnostics": return GetConsoleDiagnostics(args);
                 default: throw new ArgumentOutOfRangeException(nameof(toolName), toolName, "Unsupported structured Unity MCP tool.");
             }
         }
@@ -166,6 +169,255 @@ namespace UnityMcp.Editor
         private static object StartCapture(JsonElement args) => CreateJob("capture_validation", args, args);
         private static object StartCheckpoint(JsonElement args) => CreateJob("create_shader_checkpoint", args, args);
 
+        /// <summary>
+        /// Reads Unity console diagnostics, optionally scoped to specific assets, and augments Shader
+        /// assets with authoritative compiler error state. This is the Console-error gate for Step 7.
+        /// </summary>
+        private static object GetConsoleDiagnostics(JsonElement args)
+        {
+            var paths = GetStringArray(args, "assetPaths");
+            var includeWarnings = args.ValueKind == JsonValueKind.Object && args.TryGetProperty("includeWarnings", out var includeWarningsElement) && includeWarningsElement.ValueKind == JsonValueKind.True;
+            // The cursor only suppresses *stale console noise*, so an already-fixed Shader does not stay
+            // "dirty" forever. Authoritative live Shader compile state is never cursored: a broken Shader
+            // whose error was logged before the cursor must still fail the gate.
+            var since = GetString(args, "since");
+            var logs = ReadConsoleLogEntries()
+                .Where(log => IsAfterCursor(ReadString(log, "timestamp"), since))
+                .ToArray();
+            var diagnostics = new List<DiagnosticEntry>();
+            var scannedShaders = new List<object>();
+            var shaderErrorCount = 0;
+            if (paths.Length == 0)
+            {
+                diagnostics.AddRange(ExtractDiagnostics(logs, null, includeWarnings));
+            }
+            else
+            {
+                foreach (var path in paths)
+                {
+                    RequireReadPath(path);
+                    diagnostics.AddRange(ExtractDiagnostics(logs, path, includeWarnings));
+                    if (!path.EndsWith(".shader", StringComparison.OrdinalIgnoreCase)) continue;
+                    var scan = DescribeShaderCompilation(path, includeWarnings);
+                    scannedShaders.Add(scan.payload);
+                    if (scan.hasErrors) shaderErrorCount++;
+                    // Live compiler findings are folded into errorCount so the gate can never report
+                    // "clean" while Unity itself flags the Shader as broken.
+                    diagnostics.AddRange(scan.diagnostics);
+                }
+            }
+            var errorCount = diagnostics.Count(item => item.severity == "error");
+            var warningCount = diagnostics.Count(item => item.severity == "warning");
+            return new
+            {
+                status = errorCount > 0 ? "failed" : "clean",
+                errorCount,
+                warningCount,
+                shaderErrorCount,
+                since = since ?? "epoch",
+                sinceScope = "console-noise-only",
+                scannedAssetPaths = paths,
+                scannedShaders = scannedShaders.ToArray(),
+                diagnostics = diagnostics.ToArray(),
+                suggestions = errorCount > 0
+                    ? new[] { "Fix the reported Shader or asset errors, then call refresh_and_compile_assets and re-read diagnostics before any visual validation." }
+                    : Array.Empty<string>()
+            };
+        }
+
+        private static bool IsAfterCursor(string timestamp, string since)
+        {
+            if (string.IsNullOrEmpty(since)) return true;
+            if (string.IsNullOrEmpty(timestamp)) return true;
+            return DateTime.TryParse(timestamp, null, System.Globalization.DateTimeStyles.RoundtripKind, out var parsed)
+                && DateTime.TryParse(since, null, System.Globalization.DateTimeStyles.RoundtripKind, out var cursor)
+                && parsed > cursor;
+        }
+
+        /// <summary>
+        /// Collects Unity's authoritative shader-compiler findings for every supported platform.
+        /// ShaderUtil.ShaderHasError is the definitive live flag; ShaderUtil.GetShaderMessages adds
+        /// per-platform detail and is merged into the returned diagnostics so it drives the gate.
+        /// </summary>
+        private static ShaderScanResult DescribeShaderCompilation(string assetPath, bool includeWarnings)
+        {
+            var result = new ShaderScanResult();
+            var observedAtUtc = DateTime.UtcNow.ToString("o");
+            var shader = AssetDatabase.LoadAssetAtPath<Shader>(assetPath);
+            if (shader == null)
+            {
+                result.hasErrors = true;
+                result.payload = new { assetPath, shaderName = (string)null, hasErrors = true, hasWarnings = false, messageCount = 0, platforms = Array.Empty<object>() };
+                result.diagnostics.Add(new DiagnosticEntry
+                {
+                    severity = "error",
+                    source = "shader-compiler",
+                    message = "The Shader asset could not be loaded; it may be missing or failed to import.",
+                    assetPath = assetPath,
+                    timestamp = observedAtUtc
+                });
+                return result;
+            }
+            var platformResults = new List<object>();
+            var messageCount = 0;
+            foreach (var platform in Enum.GetValues(typeof(ShaderCompilerPlatform)).Cast<ShaderCompilerPlatform>())
+            {
+                ShaderMessage[] messages;
+                try
+                {
+                    messages = ShaderUtil.GetShaderMessages(shader, platform);
+                }
+                catch
+                {
+                    continue;
+                }
+                if (messages == null || messages.Length == 0) continue;
+                var serialized = messages.Select(message => new
+                {
+                    message.severity,
+                    message.message,
+                    message.platform,
+                    message.line,
+                    file = string.IsNullOrEmpty(message.file) ? ResolveShaderSourceFile(assetPath, message.message) : message.file
+                }).ToArray();
+                foreach (var message in messages)
+                {
+                    messageCount++;
+                    string severity = null;
+                    if (message.severity == ShaderCompilerMessageSeverity.Error)
+                    {
+                        result.hasErrors = true;
+                        severity = "error";
+                    }
+                    else if (message.severity == ShaderCompilerMessageSeverity.Warning)
+                    {
+                        result.hasWarnings = true;
+                        severity = "warning";
+                    }
+                    if (severity == null) continue;
+                    if (severity == "warning" && !includeWarnings) continue;
+                    result.diagnostics.Add(new DiagnosticEntry
+                    {
+                        severity = severity,
+                        source = "shader-compiler",
+                        message = message.message,
+                        assetPath = assetPath,
+                        timestamp = observedAtUtc
+                    });
+                }
+                platformResults.Add(new { platform = platform.ToString(), messages = serialized });
+            }
+            // The per-platform message list can be empty even for a broken Shader (for example when the
+            // platform has not been compiled yet). ShaderHasError is the definitive live signal.
+            if (!result.hasErrors && ShaderHasError(shader))
+            {
+                result.hasErrors = true;
+                result.diagnostics.Add(new DiagnosticEntry
+                {
+                    severity = "error",
+                    source = "shader-compiler",
+                    message = "ShaderUtil reports this Shader as having compile errors, but no per-platform message was exposed. Inspect the failing pass in the Shader Inspector.",
+                    assetPath = assetPath,
+                    timestamp = observedAtUtc
+                });
+            }
+            result.payload = new { assetPath, shaderName = shader.name, hasErrors = result.hasErrors, hasWarnings = result.hasWarnings, messageCount, platforms = platformResults.ToArray() };
+            return result;
+        }
+
+        /// <summary>Reads Unity's live Shader error flag defensively so a missing API never breaks diagnostics.</summary>
+        private static bool ShaderHasError(Shader shader)
+        {
+            try
+            {
+                return ShaderUtil.ShaderHasError(shader);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static string ResolveShaderSourceFile(string assetPath, string message)
+        {
+            if (string.IsNullOrEmpty(message)) return assetPath;
+            var match = System.Text.RegularExpressions.Regex.Match(message, @"(Assets/[^\s\(]+\.(?:shader|hlsl|cginc))");
+            return match.Success ? match.Value : assetPath;
+        }
+
+        private static JsonElement[] ReadConsoleLogEntries()
+        {
+            var snapshotJson = UnityMcpConnection.GetRecentLogSnapshotJson();
+            if (string.IsNullOrEmpty(snapshotJson)) return Array.Empty<JsonElement>();
+            try
+            {
+                using var document = JsonDocument.Parse(snapshotJson);
+                if (document.RootElement.ValueKind != JsonValueKind.Array) return Array.Empty<JsonElement>();
+                return document.RootElement.EnumerateArray().Select(item => item.Clone()).ToArray();
+            }
+            catch
+            {
+                return Array.Empty<JsonElement>();
+            }
+        }
+
+        private static List<DiagnosticEntry> ExtractDiagnostics(JsonElement[] logs, string assetPath, bool includeWarnings)
+        {
+            var results = new List<DiagnosticEntry>();
+            var normalized = string.IsNullOrEmpty(assetPath) ? null : assetPath.Replace('\\', '/');
+            var shaderName = normalized != null && normalized.EndsWith(".shader", StringComparison.OrdinalIgnoreCase) ? AssetDatabase.LoadAssetAtPath<Shader>(assetPath)?.name : null;
+            foreach (var log in logs)
+            {
+                var severity = MapSeverity(ReadString(log, "logType"));
+                if (severity == null) continue;
+                if (severity == "warning" && !includeWarnings) continue;
+                var message = ReadString(log, "message");
+                if (string.IsNullOrEmpty(message)) continue;
+                if (normalized != null && !IsRelatedToAsset(message, normalized, shaderName)) continue;
+                results.Add(new DiagnosticEntry
+                {
+                    severity = severity,
+                    source = "console",
+                    message = message,
+                    stackTrace = ReadString(log, "stackTrace"),
+                    timestamp = ReadString(log, "timestamp"),
+                    assetPath = assetPath
+                });
+            }
+            if (normalized != null && normalized.EndsWith(".shader", StringComparison.OrdinalIgnoreCase) && AssetDatabase.LoadAssetAtPath<Shader>(assetPath) == null)
+            {
+                results.Add(new DiagnosticEntry { severity = "error", source = "asset", message = "The Shader asset could not be loaded; it may be missing or failed to import.", assetPath = assetPath });
+            }
+            return results;
+        }
+
+        private static string MapSeverity(string logType)
+        {
+            if (string.IsNullOrEmpty(logType)) return null;
+            if (string.Equals(logType, "Error", StringComparison.OrdinalIgnoreCase)) return "error";
+            if (string.Equals(logType, "Exception", StringComparison.OrdinalIgnoreCase)) return "error";
+            if (string.Equals(logType, "Assert", StringComparison.OrdinalIgnoreCase)) return "error";
+            if (string.Equals(logType, "Warning", StringComparison.OrdinalIgnoreCase)) return "warning";
+            return null;
+        }
+
+        private static bool IsRelatedToAsset(string message, string normalizedAssetPath, string shaderName)
+        {
+            var lower = message.ToLowerInvariant();
+            if (lower.Contains(normalizedAssetPath.ToLowerInvariant())) return true;
+            var fileName = Path.GetFileName(normalizedAssetPath);
+            if (!string.IsNullOrEmpty(fileName) && lower.Contains(fileName.ToLowerInvariant())) return true;
+            if (string.IsNullOrEmpty(shaderName)) return false;
+            // Unity reports shader compile errors as: Shader error in 'AIShader/Generated/Xyz': ...
+            var lowerShaderName = shaderName.ToLowerInvariant();
+            if (lower.Contains("'" + lowerShaderName + "'")) return true;
+            // Also match the last path segment of the shader name for tolerance.
+            var lastSegment = lowerShaderName.Split('/').LastOrDefault();
+            return !string.IsNullOrEmpty(lastSegment) && lower.Contains("'" + lastSegment + "'");
+        }
+
+        private static string ReadString(JsonElement element, string name) => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
         private static object CreateJob(string type, JsonElement jobArgs, JsonElement context)
         {
             var id = Guid.NewGuid().ToString("N");
@@ -175,9 +427,9 @@ namespace UnityMcp.Editor
             return new { jobId = id, status = record.status, acceptedJobType = type, acceptedAtUtc = record.createdAtUtc, completedAtUtc = record.completedAtUtc, logCursor = record.createdAtUtc };
         }
 
-        private static void ExecuteJob(JobRecord record)
+        private static Task ExecuteJob(JobRecord record)
         {
-            if (record.status == "cancelled") return;
+            if (record.status == "cancelled") return Task.CompletedTask;
             record.status = "running";
             try
             {
@@ -186,7 +438,7 @@ namespace UnityMcp.Editor
                 switch (record.jobType)
                 {
                     case "build_shader_knowledge_base": result = BuildKnowledgeBase(args.RootElement, record); break;
-                    case "refresh_and_compile_assets": result = CompileAssets(args.RootElement, record); break;
+                    case "refresh_and_compile_assets": return RunCompileAsync(args.RootElement, record).ContinueWith(task => CompleteJob(record, task));
                     case "ensure_validation_scene": result = EnsureValidationScene(args.RootElement, record); break;
                     case "capture_validation": result = CaptureValidation(args.RootElement, record); break;
                     case "create_shader_checkpoint": result = CreateCheckpoint(args.RootElement, record); break;
@@ -202,6 +454,24 @@ namespace UnityMcp.Editor
                 Debug.LogError("[Unity MCP] Structured job failed: " + record.jobType + "\n" + exception);
             }
             finally { record.completedAtUtc = DateTime.UtcNow.ToString("o"); }
+            return Task.CompletedTask;
+        }
+
+        private static void CompleteJob(JobRecord record, Task<object> task)
+        {
+            if (task.Status == TaskStatus.RanToCompletion)
+            {
+                record.resultJson = JsonSerializer.Serialize(task.Result, JsonOptions);
+                record.status = "succeeded";
+            }
+            else
+            {
+                var exception = task.Exception?.GetBaseException();
+                record.status = "failed";
+                record.error = exception?.Message ?? "Structured job failed.";
+                Debug.LogError("[Unity MCP] Structured job failed: " + record.jobType + "\n" + exception);
+            }
+            record.completedAtUtc = DateTime.UtcNow.ToString("o");
         }
 
         private static object GetJob(JsonElement args)
@@ -241,12 +511,53 @@ namespace UnityMcp.Editor
             return new { status = "fresh", knowledgeBaseVersion = version, buildMode = mode, manifestPath = root + "manifest.json", refreshedPartitions = new[] { "environment", "shader_corpus", "library", "conventions", "capabilities", "retrieval" }, coverageReport = new { shaderCount = shaderPaths.Length }, unresolvedItems = Array.Empty<string>(), recommendedNextAction = "Knowledge base is ready." };
         }
 
-        private static object CompileAssets(JsonElement args, JobRecord record)
+        /// <summary>
+        /// Imports the requested assets, then defers the compile-evidence read to the next editor tick so
+        /// Unity shader compilation and Console reporting have completed before diagnostics are collected.
+        /// </summary>
+        private static Task<object> RunCompileAsync(JsonElement args, JobRecord record)
         {
             var paths = GetStringArray(args, "assetPaths");
             foreach (var path in paths) { RequireReadPath(path); AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate); }
             AssetDatabase.Refresh();
-            return new { status = "passed", compiledAssets = paths.Select(path => new { path, observedRevision = File.Exists(path) ? Revision(path) : "absent", importStatus = "imported" }).ToArray(), diagnostics = Array.Empty<object>(), newlyObservedLogs = Array.Empty<object>() };
+            var completion = new TaskCompletionSource<object>();
+            EditorApplication.delayCall += () =>
+            {
+                try
+                {
+                    var compiledAssets = paths.Select(path => new { path, observedRevision = File.Exists(path) ? Revision(path) : "absent", importStatus = "imported" }).ToArray();
+                    var logs = ReadConsoleLogEntries();
+                    var diagnostics = new List<DiagnosticEntry>();
+                    var scannedShaders = new List<object>();
+                    foreach (var path in paths)
+                    {
+                        diagnostics.AddRange(ExtractDiagnostics(logs, path, true));
+                        // Live compiler findings are part of the compile job verdict, not just console noise.
+                        if (!path.EndsWith(".shader", StringComparison.OrdinalIgnoreCase)) continue;
+                        var scan = DescribeShaderCompilation(path, true);
+                        scannedShaders.Add(scan.payload);
+                        diagnostics.AddRange(scan.diagnostics);
+                    }
+                    var errorCount = diagnostics.Count(item => item.severity == "error");
+                    var warningCount = diagnostics.Count(item => item.severity == "warning");
+                    completion.TrySetResult(new
+                    {
+                        status = errorCount > 0 ? "failed" : "passed",
+                        compiledAssets,
+                        scannedShaders = scannedShaders.ToArray(),
+                        diagnostics = diagnostics.ToArray(),
+                        errorCount,
+                        warningCount,
+                        newlyObservedLogs = Array.Empty<object>(),
+                        compiledAtUtc = DateTime.UtcNow.ToString("o")
+                    });
+                }
+                catch (Exception exception)
+                {
+                    completion.TrySetException(exception);
+                }
+            };
+            return completion.Task;
         }
 
         private static object EnsureValidationScene(JsonElement args, JobRecord record)
@@ -322,6 +633,27 @@ namespace UnityMcp.Editor
         }
 
         [Serializable] private sealed class JobRecord { public string jobId; public string jobType; public string status; public string createdAtUtc; public string completedAtUtc; public string argsJson; public string contextJson; public string resultJson; public string error; public readonly List<string> artifacts = new List<string>(); }
+
+        /// <summary>Internal carrier for a single Shader's live compile state plus its serialized payload.</summary>
+        private sealed class ShaderScanResult
+        {
+            public bool hasErrors;
+            public bool hasWarnings;
+            public object payload;
+            public readonly List<DiagnosticEntry> diagnostics = new List<DiagnosticEntry>();
+        }
+
+        /// <summary>Serialized as properties so System.Text.Json emits them reliably.</summary>
+        [Serializable]
+        private sealed class DiagnosticEntry
+        {
+            public string severity { get; set; }
+            public string source { get; set; }
+            public string message { get; set; }
+            public string stackTrace { get; set; }
+            public string timestamp { get; set; }
+            public string assetPath { get; set; }
+        }
     }
 }
 #endif

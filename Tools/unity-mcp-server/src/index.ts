@@ -581,7 +581,7 @@ class UnityMCPServer {
       'get_shader_knowledge_base_status', 'build_shader_knowledge_base', 'query_shader_knowledge_base',
       'inspect_shader_structure', 'get_asset_revision', 'write_generated_text_asset',
       'refresh_and_compile_assets', 'ensure_validation_scene', 'capture_validation',
-      'create_shader_checkpoint', 'restore_shader_checkpoint'
+      'create_shader_checkpoint', 'restore_shader_checkpoint', 'get_console_diagnostics'
     ];
   }
 
@@ -608,7 +608,8 @@ class UnityMCPServer {
       { name: 'ensure_validation_scene', description: 'Queue isolated deterministic validation-session setup.', category: 'Shader Validation', inputSchema: { ...jobContext, properties: { ...jobContext.properties, validationProfile: { type: 'object' }, target: { type: 'object' } }, required: ['validationProfile', 'target'] } },
       { name: 'capture_validation', description: 'Queue deterministic validation capture for an existing validation session.', category: 'Shader Validation', inputSchema: { ...jobContext, properties: { ...jobContext.properties, validationSessionId: { type: 'string' }, captures: { type: 'array' } }, required: ['validationSessionId', 'captures'] } },
       { name: 'create_shader_checkpoint', description: 'Queue an immutable Shader run checkpoint manifest.', category: 'Shader Validation', inputSchema: { ...jobContext, properties: { ...jobContext.properties, decision: { type: 'string', enum: ['pass', 'revise', 'blocked'] }, assetRevisions: { type: 'array' } }, required: ['decision', 'assetRevisions'] } },
-      { name: 'restore_shader_checkpoint', description: 'Request structured restoration of a generated-assets checkpoint.', category: 'Shader Assets', inputSchema: { ...jobContext, properties: { ...jobContext.properties, checkpointId: { type: 'string' } }, required: ['checkpointId'] } }
+      { name: 'restore_shader_checkpoint', description: 'Request structured restoration of a generated-assets checkpoint.', category: 'Shader Assets', inputSchema: { ...jobContext, properties: { ...jobContext.properties, checkpointId: { type: 'string' } }, required: ['checkpointId'] } },
+      { name: 'get_console_diagnostics', description: 'Read Unity Console errors and warnings for generated Shader assets, including authoritative shader compiler findings for every platform. Use this after every constrained-execution write in Step 7.', category: 'Shader Validation', inputSchema: { type: 'object', properties: { assetPaths: { type: 'array', items: { type: 'string' }, description: 'Optional project-relative asset paths to scope diagnostics to; omit to scan the whole buffered console.' }, includeWarnings: { type: 'boolean', description: 'Include Warning-severity entries. Defaults to false so only errors block validation.' }, since: { type: 'string', description: 'ISO-8601 cursor (typically the write/job timestamp). Console entries at or before this instant are ignored so stale errors cannot pin a fixed Shader as failed.' }, operationContext: { type: 'object' } }, additionalProperties: true } }
     ];
   }
 

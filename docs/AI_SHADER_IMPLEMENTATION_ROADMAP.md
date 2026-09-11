@@ -1144,3 +1144,57 @@ Assets/AIShader/Generated
 > **一个可重复、可分阶段、可截图、可诊断、可回滚的 Shader 验证闭环。**
 
 一旦这个闭环成立，PBR、NPR 和后续特效只是在知识库、语义图和验收规则上扩展，而不是重新设计整套基础设施。
+
+### Step 7 Console 门禁验证记录
+
+针对“新生成 Shader 是否存在 Console 报错”的门禁，已在真实 Unity Editor 上完成双向验证。执行链路为
+`refresh_and_compile_assets`（异步 Job）→ `get_unity_job` → `get_console_diagnostics`。
+
+**权威信号来源**
+
+- `ShaderUtil.ShaderHasError(shader)` 作为 Shader 是否存在编译错误的权威实时信号；
+- `ShaderUtil.GetShaderMessages(shader, platform)` 作为按平台补充的错误/警告明细；
+- 两者都会折入 `diagnostics`，因此 `errorCount`、`status` 不会在 Unity 已判定 Shader 损坏时仍返回 `clean`。
+
+**游标语义**
+
+`since` 游标仅用于过滤陈旧的 Console 噪声，避免已修复的 Shader 永久保持脏状态；
+实时 Shader 编译状态不受游标影响。返回中的 `sinceScope` 固定为 `console-noise-only` 以显式声明该语义。
+
+**反向用例（负向探针，已验证）**
+
+临时写入一个故意损坏的 Shader（引用未定义符号）后，门禁返回：
+
+```text
+status = "failed"
+errorCount = 1
+shaderErrorCount = 1
+scannedShaders[0].hasErrors = true
+```
+
+**正向用例（真实资产，已验证）**
+
+删除负向探针后，对真实生成资产执行门禁：
+
+```text
+TransparentFresnelPBR.shader      64e54c8e952a7ff0bbf6fcead737dfa5bb796c075cd0b024b7e137042a45e8ff
+TransparentFresnelPBR.mat         b27ee957ad7add8d882d0666ab12ad2b0f32e40f8a43bdfb0a5306529f8e211e
+TransparentFresnelPBRValidation   e25c872f24deae0d6e37fed7f8ae272e1fba28f2bb965e8f7d6aae20536bec63
+
+status = "clean"
+errorCount = 0
+shaderErrorCount = 0
+scannedShaders[0].hasErrors = false
+```
+
+**结论**
+
+新生成的 `TransparentFresnelPBR` Shader 在 Unity 6000.5.4f1 / URP 下无编译错误，无需修复；
+门禁已具备“真实报错必须失败、真实干净必须通过”的双向可信性。负向探针属于临时验证资产，验证后已删除。
+
+**已知边界**
+
+Editor 程序集改动或资产重导入会触发 Unity 域重载：WebSocket 短暂断开、内存态 Job 注册表被清空，
+表现为 `Unity Editor is not connected`、`Unknown jobId` 或 `did not acknowledge within 30 seconds`。
+验证脚本 `Tools/unity-mcp-server/manual-console-check.mjs` 已内建“等待重连 + 瞬时错误重试 + `Unknown jobId` 重发”，
+这是工具链的已知约束而非 Shader 或门禁本身的缺陷。
