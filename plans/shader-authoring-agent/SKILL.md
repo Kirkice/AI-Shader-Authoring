@@ -11,6 +11,8 @@ description: 将自然语言材质需求规范化为标准 PBR 材质意图，�
 
 本 Skill 是领域编排协议，不是通用 Unity 操作层。所有 Unity 编辑器读取、资产操作、编译、场景配置、截图和日志收集均通过现有 Unity MCP 执行：[`get_editor_state`](../../Tools/unity-mcp-server/src/index.ts:359)、[`execute_editor_command`](../../Tools/unity-mcp-server/src/index.ts:406)、[`get_logs`](../../Tools/unity-mcp-server/src/index.ts:508)。
 
+对于本 Skill 新建或实质性更新的材质 Shader，Inspector 注释布局委派给 [`markup-shader-gui-authoring`](../markup-shader-gui-authoring/SKILL.md)。主 Skill 只在 Shader 编译通过、真实 Properties 与关键字已确定后发起该委派；子 Skill 只维护 `Properties` 内的 Markup 注释与最外层 `CustomEditor` 声明，不得反向改变渲染实现。
+
 ## 首期范围
 
 ### 支持
@@ -61,7 +63,9 @@ RESOLVE_CAPABILITIES
   -> BLOCKED | PLAN_CODE
 PLAN_CODE
   -> EXECUTE
-EXECUTE
+EXECUTE_SHADER
+  -> AUTHOR_SHADER_GUI
+AUTHOR_SHADER_GUI
   -> VALIDATE
 VALIDATE
   -> PASS | REVISE | BLOCKED
@@ -680,6 +684,15 @@ ShaderCodePlan
   renderState
   invariants
   generatedMaterialProperties
+  shaderGuiAuthoring
+    required: true | false
+    delegate: markup-shader-gui-authoring | none
+    trigger: post_shader_compile
+    targetShader
+    expectedProperties
+    expectedKeywords
+    customEditorPolicy: add_if_absent | preserve_existing | replace_confirmed_legacy
+    excludedReason
   validationPlan
   rollbackPlan
 ```
@@ -694,6 +707,8 @@ ShaderCodePlan
 - 每次写入前记录基线版本；每次失败保留失败版本和差异。
 - 必须写明风格对齐基线：继承的工程关键字矩阵、`Attributes`/`Varyings` 布局与命名约定（纪律 11），以及每条未继承项的偏差理由。
 - 必须写明注释语言为中文（纪律 12）。
+- 对新建或实质更新的材质 Shader，`shaderGuiAuthoring.required` 默认必须为 `true`，并在首次 Shader 编译通过后委派 [`markup-shader-gui-authoring`](../markup-shader-gui-authoring/SKILL.md)。仅当用户明确要求不使用自定义 Inspector、目标 Shader 不是材质 Shader、或既有非 Markup `CustomEditor` 不允许替换时，才可设为 `false`；必须在 `excludedReason` 记录原因。
+- `expectedProperties` 和 `expectedKeywords` 必须来自生成后、编译前的实际 Shader 文本与项目锚点，不能凭 `MaterialIntent` 臆造。`customEditorPolicy` 默认使用 `add_if_absent`，不得静默覆盖未知的既有 `CustomEditor`。
 
 ## Step 7：受限执行
 
@@ -745,6 +760,39 @@ ShaderCodePlan
 - 修复不得超出 Code Plan 的 `allowedFiles`；需要新资产时先更新 Code Plan 并重新授权。
 - 每次修复都必须记录：命中的诊断、修改点、修改前后 revision、复检结果。
 
+### Step 7.5：委派 Markup ShaderGUI 注释生成（强制后处理）
+
+当 `ShaderCodePlan.shaderGuiAuthoring.required = true` 时，主 Skill 必须在 Step 7 写入 Shader 并完成首次编译/Console 门禁后，调用 [`markup-shader-gui-authoring`](../markup-shader-gui-authoring/SKILL.md)。不得在 Shader 的 Properties、关键字或默认值尚未稳定前生成 GUI 标记。
+
+#### 委派输入
+
+```text
+MarkupShaderGUIAuthoringRequest
+  targetShader
+  targetShaderRevision
+  materialIntent
+  renderingSemanticGraph
+  generatedMaterialProperties
+  expectedProperties
+  expectedKeywords
+  customEditorPolicy
+  userInspectorRequirements
+  sourceStyleEvidence
+```
+
+- `expectedProperties`：属性名、显示名、类型、默认值、语义与所属效果层。
+- `expectedKeywords`：实际 `#pragma` 声明、关键字用途与对应效果层；没有真实关键字时不得要求子 Skill 生成 `KeyWords` 标记。
+- `userInspectorRequirements`：用户明确提出的 Inspector 分组、名称、隐藏/显示或开关偏好；未提供时由子 Skill 按材质语义生成。
+- `sourceStyleEvidence`：当前工程 Shader 的命名、中文注释和 Inspector 布局证据；缺失时只能采用子 Skill 的保守默认分组。
+
+#### 委派约束与返回处理
+
+1. 子 Skill 只能改动目标 Shader 的 `Properties` 注释与最外层 `CustomEditor` 声明；主 Skill 的渲染代码、关键字、属性类型/默认值、Pass 与渲染状态均为不可修改锚点。
+2. 子 Skill 生成后，主 Skill 必须将新的 Shader revision 记为本轮最终 revision，并重新执行 Step 7 的刷新、编译及 [`get_console_diagnostics`](../../Tools/unity-mcp-server/src/index.ts:611)。
+3. 子 Skill 返回解析歧义、已有未知 `CustomEditor` 冲突或不可安全自动化项时，主 Skill 将其记录到 `ShaderCodePlan.shaderGuiAuthoring.excludedReason`；不以删除属性或覆盖未知 Inspector 的方式强行通过。
+4. GUI 标记失败不会被视觉截图掩盖：若目标 Shader 的编译或解析诊断存在 Error，本轮进入 `REVISE`；若仅为用户选择的 Inspector 策略冲突，则进入 `BLOCKED` 或保留默认 Inspector，并明确报告。
+5. 在最终验证中，除渲染结果外，还必须确认 Inspector 分组、属性类型、组级开关、关键字开关及 Render Queue 字段的行为与委派计划一致。
+
 ## Step 8：验证与 Checkpoint
 
 ### 固定验证顺序
@@ -752,7 +800,8 @@ ShaderCodePlan
 1. 静态检查：计划白名单、锚点、属性、渲染状态、禁止特性，以及纪律 11 的风格对齐项（工程关键字矩阵是否完整继承、`Attributes`/`Varyings` 是否沿用、未继承项是否已记录偏差理由）。
 2. Unity 刷新与 Shader 编译（`refresh_and_compile_assets` → `get_unity_job`）。
 3. Console 读取（`get_console_diagnostics`）：确认无新增 Error；有错则回到 Step 7 修复循环。
-4. 在确定性验证场景中配置球体、相机、主光、环境和材质。
+4. 当 `shaderGuiAuthoring.required = true` 时，确认 Markup 注释的解析与 Inspector 行为符合委派计划；失败则回到 Step 7.5 修复。
+5. 在确定性验证场景中配置球体、相机、主光、环境和材质。
 5. 输出当前阶段的目标图、参考图、Debug 图。
 6. 运行当前阶段所需的参数扫描。
 7. 保存 `PASS`、`REVISE` 或 `BLOCKED` 及其证据（必须包含第 2、3 步的诊断结果）。
@@ -856,11 +905,13 @@ BLOCKED
 - invariants:
 - project style baseline:（继承的关键字矩阵、Attributes/Varyings、命名约定；未继承项与理由）
 - comment language: 中文
+- shader GUI authoring:（required/delegate、目标 Shader revision、Properties/Keywords 输入、CustomEditor 策略、委派结果或豁免理由）
 
 ## Validation
 - static result:
 - compile result:
 - console result:
+- shader GUI result:（分组/开关/枚举/CustomEditor、解析与 Inspector 验证结果）
 - captures and debug channels:
 - capture hash comparison:（材质替换前后的 PNG contentHash 是否变化）
 - comparison result:
