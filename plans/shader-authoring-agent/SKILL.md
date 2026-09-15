@@ -46,7 +46,9 @@ description: 将自然语言材质需求规范化为标准 PBR 材质意图，�
 9. 任何 `pass` 必须有静态检查、Unity Console、截图或数值证据；截图不是唯一真值。
 10. `revise` 必须保留当前工件和失败证据；`blocked` 必须说明缺失能力或最小人工决策。
 11. 生成的 Shader 必须与工程既有 Shader 保持同一风格：工程已有 Pass 声明的关键字矩阵、`Attributes`/`Varyings` 布局、Pass 标签与命名约定必须一并继承；任务未映射到的能力以恒等接线保留结构，而不是省略关键字或结构。
-12. 生成的 Shader 与 HLSL 代码注释必须使用中文；注释说明意图、约束与来源，不复述代码字面。
+12. 选择某个参考 Shader 作为生成基线时，必须将其 `Properties`、属性类型/默认值、纹理通道约定、关联关键字、`CBUFFER` 字段、采样与 `SurfaceData` 接线视作一个不可拆分的材质工艺契约；不得以「需求未明确提出」「本次用不到」或「最小实现」为由删除其中任一能力。
+13. 参考 Shader 存在多工作流或互斥变体时（例如 Metallic 与 Specular），必须完整保留每套工作流的属性、贴图、关键字与运行时接线；不得只保留默认工作流。新增效果只能叠加在参考基线之上，不得替代、短接或降级原有工作流。
+14. 生成的 Shader 与 HLSL 代码注释必须使用中文；注释说明意图、约束与来源，不复述代码字面。
 
 ## 状态机
 
@@ -725,14 +727,26 @@ ShaderCodePlan
 
 ### 工程风格对齐（硬性约束）
 
-生成资产不是「最小可用 Shader」，而是**工程既有 Shader 的同风格实现**：
+生成资产不是「最小可用 Shader」，而是**工程既有 Shader 的同工艺派生实现**。这里的“对齐”不仅指代码外观，而是保证同一项目中的美术材质、贴图打包规则和 Inspector 操作方式可复用：
 
 1. 以知识库中的工程样本（`attributesVaryingsStyle`、`fragmentProgramStyle`、`keywords`、`renderStates`）为基线，而不是凭记忆。
-2. 工程 Pass 已声明的关键字必须完整继承，包括随版本更名的关键字（例如 `_CLUSTER_LIGHT_LOOP` 启用后取代已废弃的 `_FORWARD_PLUS`）；删除任何关键字都必须给出证据与理由。
-3. 任务未用到的能力以恒等接线保留结构（例如 Clear Coat 掩码置 `0`、法线贴图槽置默认值），不得因「本次用不到」而裁剪工程既有结构。
-4. 直接复用工程既有的 `Attributes` / `Varyings` 字段与顺序、渲染状态、Pass 标签和命名，除非 Code Plan 明确记录偏差。
-5. 每条差异化都必须写入 Code Plan 的 `plannedChanges`，并在证据中标注来源与置信度。
-6. 若工程样本中不存在可对照的实现，必须在 `unknowns` 中记录，而不是自行发明风格。
+2. 在写入前必须建立 `ReferenceShaderParityManifest`。它逐项列出参考 Shader 的：`Properties`（名称、显示名、类型、默认值）、纹理通道语义、隐藏兼容属性、关联 `#pragma`、`CBUFFER` 字段、采样/解包逻辑、`SurfaceData` 接线、Render State 与 Pass；并明确每项在目标 Shader 中的对应锚点。此清单是 Code Plan 的必填证据，不得仅以文字概述代替。
+3. 工程 Pass 已声明的关键字必须完整继承，包括随版本更名的关键字（例如 `_CLUSTER_LIGHT_LOOP` 启用后取代已废弃的 `_FORWARD_PLUS`）；删除任何关键字都必须给出证据与理由。
+4. 参考 Shader 的属性契约必须完整继承：即使本次需求未提及，也必须保留基础贴图、Metallic/Specular 工作流、MetallicGloss/SpecGloss 贴图、法线、AO、视差、细节贴图、Emission、透明/裁剪控制、兼容迁移属性及其原有通道约定。不得以「最小可用 PBR」「本次效果不使用」或「降低变体数」为由省略。
+5. 对参考 Shader 的多工作流或互斥变体，必须同时保留属性、贴图、关键字、采样和 `SurfaceData` 接线。例如参考 Lit 同时包含 `_MetallicGlossMap` / `_METALLICSPECGLOSSMAP` 与 `_SpecGlossMap` / `_SPECULAR_SETUP` 时，目标 Shader 必须同时实现两条路径；只实现标量 Metallic 不构成对齐。
+6. 任务未用到的能力以恒等接线保留结构（例如 Clear Coat 掩码置 `0`、法线贴图槽置默认值），不得因「本次用不到」而裁剪工程既有结构。新增效果仅允许在完整基线之后叠加，不能替换、旁路或降级既有 PBR 输入。
+7. 直接复用工程既有的 `Attributes` / `Varyings` 字段与顺序、渲染状态、Pass 标签和命名，除非 Code Plan 明确记录偏差。
+8. 每条差异化都必须写入 Code Plan 的 `plannedChanges`，并在证据中标注来源与置信度。
+9. 若工程样本中不存在可对照的实现，必须在 `unknowns` 中记录，而不是自行发明风格。
+
+#### 属性工艺对齐门禁
+
+在首次写 Shader 前与最终 `PASS` 前各执行一次 `ReferenceShaderParityManifest` 核对：
+
+- 任一参考属性、关键字、贴图采样、通道约定、工作流分支、Pass 或兼容属性缺失，且不存在用户明确批准的偏差记录：判定 `REVISE`，禁止进入视觉验收或 `PASS`。
+- 仅在 `Properties` 中声明贴图但未声明对应关键字、未采样、未写入 `SurfaceData`，视为缺失，不得算作对齐。
+- 参考材质的现有 `.mat` 必须能无丢失地迁移到目标 Shader：检查同名属性可解析、纹理槽不丢失、默认值/通道语义一致；失败即 `REVISE`。
+- 用户只需描述新增效果时，默认语义是「在参考 Shader 的完整工艺基线上增加效果」，不是授权精简参考 Shader。
 
 ### 执行后强制 Console 检查（硬性门禁）
 
@@ -797,7 +811,7 @@ MarkupShaderGUIAuthoringRequest
 
 ### 固定验证顺序
 
-1. 静态检查：计划白名单、锚点、属性、渲染状态、禁止特性，以及纪律 11 的风格对齐项（工程关键字矩阵是否完整继承、`Attributes`/`Varyings` 是否沿用、未继承项是否已记录偏差理由）。
+1. 静态检查：计划白名单、锚点、属性、渲染状态、禁止特性，以及 `ReferenceShaderParityManifest`：工程关键字矩阵、Properties、纹理通道语义、工作流分支、`CBUFFER`、采样/`SurfaceData` 接线、`Attributes`/`Varyings`、Pass 是否完整继承；任一未继承项必须有用户明确批准的偏差理由，否则直接 `REVISE`。
 2. Unity 刷新与 Shader 编译（`refresh_and_compile_assets` → `get_unity_job`）。
 3. Console 读取（`get_console_diagnostics`）：确认无新增 Error；有错则回到 Step 7 修复循环。
 4. 当 `shaderGuiAuthoring.required = true` 时，确认 Markup 注释的解析与 Inspector 行为符合委派计划；失败则回到 Step 7.5 修复。
@@ -857,8 +871,8 @@ Stage 10 法线、Alpha Clip、透明等首期扩展
 ```text
 PASS
   当前阶段编译通过，静态检查通过，Console 无新增错误，验证证据满足明确验收标准，
-  且通过工程风格对齐检查（纪律 11）与验证证据硬性防线（截图哈希随材质变化）。
-  未对齐工程风格、注释非中文、或命中验证防线条目时，一律不得判定 PASS。
+  且通过工程风格与属性工艺对齐检查（纪律 11-13、`ReferenceShaderParityManifest`）与验证证据硬性防线（截图哈希随材质变化）。
+  未对齐工程风格或参考属性工艺契约、注释非中文、或命中验证防线条目时，一律不得判定 PASS。
 
 REVISE
   存在可定位的代码、数据、公式、参数、颜色空间或场景配置问题；保留现场，仅修正当前假设。
