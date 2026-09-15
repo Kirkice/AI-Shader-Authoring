@@ -43,27 +43,27 @@ namespace MarkupShaderGUI
                 var entry = new SerializedPropertyEntry
                 {
                     uniform = prop.name,
-                    type = (int)prop.propertyType
+                    type = (int)prop.type
                 };
 
-                switch (prop.propertyType)
+                switch (prop.type)
                 {
-                    case UnityEngine.Rendering.ShaderPropertyType.Float:
-                    case UnityEngine.Rendering.ShaderPropertyType.Range:
+                    case MaterialProperty.PropType.Float:
+                    case MaterialProperty.PropType.Range:
                         entry.floatValue = material.GetFloat(prop.name);
                         break;
 
-                    case UnityEngine.Rendering.ShaderPropertyType.Color:
+                    case MaterialProperty.PropType.Color:
                         Color color = material.GetColor(prop.name);
                         entry.colorValue = new float[] { color.r, color.g, color.b, color.a };
                         break;
 
-                    case UnityEngine.Rendering.ShaderPropertyType.Vector:
+                    case MaterialProperty.PropType.Vector:
                         Vector4 vector = material.GetVector(prop.name);
                         entry.vectorValue = new float[] { vector.x, vector.y, vector.z, vector.w };
                         break;
 
-                    case UnityEngine.Rendering.ShaderPropertyType.Texture:
+                    case MaterialProperty.PropType.Texture:
                         Texture texture = material.GetTexture(prop.name);
                         if (texture != null)
                         {

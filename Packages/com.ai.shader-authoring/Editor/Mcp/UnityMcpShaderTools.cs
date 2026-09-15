@@ -8,7 +8,9 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using UnityEditor;
+#if UNITY_6000_0_OR_NEWER
 using UnityEditor.Rendering;
+#endif
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -58,12 +60,23 @@ namespace UnityMcp.Editor
             if (!File.Exists(currentPath)) return new { exists = false, status = "missing", knowledgeBaseVersion = (string)null, manifestPath = (string)null };
             try
             {
+#if UNITY_6000_0_OR_NEWER
                 using var document = JsonDocument.Parse(File.ReadAllText(currentPath));
                 var root = document.RootElement;
                 var version = GetString(root, "knowledgeBaseVersion") ?? GetString(root, "version");
                 var manifestPath = GetString(root, "manifestPath") ?? (version == null ? null : KnowledgeRoot + "versions/" + version + "/manifest.json");
                 var fresh = string.Equals(GetString(root, "freshnessStatus"), "fresh", StringComparison.OrdinalIgnoreCase) || string.Equals(GetString(root, "status"), "fresh", StringComparison.OrdinalIgnoreCase);
                 return new { exists = true, status = fresh ? "fresh" : "stale", knowledgeBaseVersion = version, manifestPath, fingerprintComparison = new { matches = fresh, changedDomains = Array.Empty<string>() } };
+#else
+                using (var document = JsonDocument.Parse(File.ReadAllText(currentPath)))
+                {
+                    var root = document.RootElement;
+                    var version = GetString(root, "knowledgeBaseVersion") ?? GetString(root, "version");
+                    var manifestPath = GetString(root, "manifestPath") ?? (version == null ? null : KnowledgeRoot + "versions/" + version + "/manifest.json");
+                    var fresh = string.Equals(GetString(root, "freshnessStatus"), "fresh", StringComparison.OrdinalIgnoreCase) || string.Equals(GetString(root, "status"), "fresh", StringComparison.OrdinalIgnoreCase);
+                    return new { exists = true, status = fresh ? "fresh" : "stale", knowledgeBaseVersion = version, manifestPath, fingerprintComparison = new { matches = fresh, changedDomains = Array.Empty<string>() } };
+                }
+#endif
             }
             catch (Exception exception) { return new { exists = true, status = "failed", failureReason = exception.Message }; }
         }
@@ -77,8 +90,15 @@ namespace UnityMcp.Editor
                 var currentPath = KnowledgeRoot + "current.json";
                 if (File.Exists(currentPath))
                 {
+#if UNITY_6000_0_OR_NEWER
                     using var currentDocument = JsonDocument.Parse(File.ReadAllText(currentPath));
                     version = GetString(currentDocument.RootElement, "knowledgeBaseVersion") ?? GetString(currentDocument.RootElement, "version");
+#else
+                    using (var currentDocument = JsonDocument.Parse(File.ReadAllText(currentPath)))
+                    {
+                        version = GetString(currentDocument.RootElement, "knowledgeBaseVersion") ?? GetString(currentDocument.RootElement, "version");
+                    }
+#endif
                 }
             }
 
@@ -239,7 +259,7 @@ namespace UnityMcp.Editor
         /// <summary>
         /// Collects Unity's authoritative shader-compiler findings for every supported platform.
         /// ShaderUtil.ShaderHasError is the definitive live flag; ShaderUtil.GetShaderMessages adds
-        /// per-platform detail and is merged into the returned diagnostics so it drives the gate.
+        /// compiler detail and is merged into the returned diagnostics so it drives the gate.
         /// </summary>
         private static ShaderScanResult DescribeShaderCompilation(string assetPath, bool includeWarnings)
         {
@@ -262,6 +282,8 @@ namespace UnityMcp.Editor
             }
             var platformResults = new List<object>();
             var messageCount = 0;
+#if UNITY_6000_0_OR_NEWER
+            // Unity 6 exposes a platform-specific overload, so preserve per-platform data.
             foreach (var platform in Enum.GetValues(typeof(ShaderCompilerPlatform)).Cast<ShaderCompilerPlatform>())
             {
                 ShaderMessage[] messages;
@@ -274,41 +296,22 @@ namespace UnityMcp.Editor
                     continue;
                 }
                 if (messages == null || messages.Length == 0) continue;
-                var serialized = messages.Select(message => new
-                {
-                    message.severity,
-                    message.message,
-                    message.platform,
-                    message.line,
-                    file = string.IsNullOrEmpty(message.file) ? ResolveShaderSourceFile(assetPath, message.message) : message.file
-                }).ToArray();
-                foreach (var message in messages)
-                {
-                    messageCount++;
-                    string severity = null;
-                    if (message.severity == ShaderCompilerMessageSeverity.Error)
-                    {
-                        result.hasErrors = true;
-                        severity = "error";
-                    }
-                    else if (message.severity == ShaderCompilerMessageSeverity.Warning)
-                    {
-                        result.hasWarnings = true;
-                        severity = "warning";
-                    }
-                    if (severity == null) continue;
-                    if (severity == "warning" && !includeWarnings) continue;
-                    result.diagnostics.Add(new DiagnosticEntry
-                    {
-                        severity = severity,
-                        source = "shader-compiler",
-                        message = message.message,
-                        assetPath = assetPath,
-                        timestamp = observedAtUtc
-                    });
-                }
-                platformResults.Add(new { platform = platform.ToString(), messages = serialized });
+                AddShaderMessages(messages, platform.ToString(), assetPath, observedAtUtc, includeWarnings, result, platformResults, ref messageCount);
             }
+#else
+            // Unity 2019.4 provides only the single-argument overload. Each message retains its platform.
+            ShaderMessage[] messages;
+            try
+            {
+                messages = ShaderUtil.GetShaderMessages(shader);
+            }
+            catch
+            {
+                messages = Array.Empty<ShaderMessage>();
+            }
+            if (messages != null && messages.Length > 0)
+                AddShaderMessages(messages, "all", assetPath, observedAtUtc, includeWarnings, result, platformResults, ref messageCount);
+#endif
             // The per-platform message list can be empty even for a broken Shader (for example when the
             // platform has not been compiled yet). ShaderHasError is the definitive live signal.
             if (!result.hasErrors && ShaderHasError(shader))
@@ -327,9 +330,57 @@ namespace UnityMcp.Editor
             return result;
         }
 
-        /// <summary>Reads Unity's live Shader error flag defensively so a missing API never breaks diagnostics.</summary>
+        /// <summary>Converts compiler messages into MCP diagnostics while preserving their platform metadata.</summary>
+        private static void AddShaderMessages(ShaderMessage[] messages, string platform, string assetPath, string observedAtUtc, bool includeWarnings, ShaderScanResult result, List<object> platformResults, ref int messageCount)
+        {
+            var serialized = messages.Select(message => new
+            {
+                message.severity,
+                message.message,
+                message.platform,
+                message.line,
+                file = string.IsNullOrEmpty(message.file) ? ResolveShaderSourceFile(assetPath, message.message) : message.file
+            }).ToArray();
+            foreach (var message in messages)
+            {
+                messageCount++;
+                string severity = null;
+#if UNITY_6000_0_OR_NEWER
+                if (message.severity == ShaderCompilerMessageSeverity.Error)
+                {
+                    result.hasErrors = true;
+                    severity = "error";
+                }
+                else if (message.severity == ShaderCompilerMessageSeverity.Warning)
+                {
+                    result.hasWarnings = true;
+                    severity = "warning";
+                }
+#else
+                // Unity 2019.4 does not expose ShaderCompilerMessageSeverity. The legacy
+                // ShaderMessage.severity value still reports its symbolic severity name.
+                var legacySeverity = message.severity.ToString();
+                if (string.Equals(legacySeverity, "Error", StringComparison.OrdinalIgnoreCase))
+                {
+                    result.hasErrors = true;
+                    severity = "error";
+                }
+                else if (string.Equals(legacySeverity, "Warning", StringComparison.OrdinalIgnoreCase))
+                {
+                    result.hasWarnings = true;
+                    severity = "warning";
+                }
+#endif
+                if (severity == null || (severity == "warning" && !includeWarnings)) continue;
+                result.diagnostics.Add(new DiagnosticEntry { severity = severity, source = "shader-compiler", message = message.message, assetPath = assetPath, timestamp = observedAtUtc });
+            }
+            platformResults.Add(new { platform = platform, messages = serialized });
+        }
+
         private static bool ShaderHasError(Shader shader)
         {
+#if UNITY_6000_0_OR_NEWER
+            // Retain the Unity 6-era direct API call for Unity 6 Editors.
             try
             {
                 return ShaderUtil.ShaderHasError(shader);
@@ -338,6 +389,18 @@ namespace UnityMcp.Editor
             {
                 return false;
             }
+#else
+            // Keep compilation valid on 2019.4 even if this internal Editor API is absent there.
+            try
+            {
+                var method = typeof(ShaderUtil).GetMethod("ShaderHasError", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static, null, new[] { typeof(Shader) }, null);
+                return method != null && (bool)method.Invoke(null, new object[] { shader });
+            }
+            catch
+            {
+                return false;
+            }
+#endif
         }
 
         private static string ResolveShaderSourceFile(string assetPath, string message)
@@ -353,9 +416,17 @@ namespace UnityMcp.Editor
             if (string.IsNullOrEmpty(snapshotJson)) return Array.Empty<JsonElement>();
             try
             {
+#if UNITY_6000_0_OR_NEWER
                 using var document = JsonDocument.Parse(snapshotJson);
                 if (document.RootElement.ValueKind != JsonValueKind.Array) return Array.Empty<JsonElement>();
                 return document.RootElement.EnumerateArray().Select(item => item.Clone()).ToArray();
+#else
+                using (var document = JsonDocument.Parse(snapshotJson))
+                {
+                    if (document.RootElement.ValueKind != JsonValueKind.Array) return Array.Empty<JsonElement>();
+                    return document.RootElement.EnumerateArray().Select(item => item.Clone()).ToArray();
+                }
+#endif
             }
             catch
             {
@@ -435,19 +506,21 @@ namespace UnityMcp.Editor
             record.status = "running";
             try
             {
-                using var args = JsonDocument.Parse(record.argsJson);
-                object result;
-                switch (record.jobType)
+                using (var args = JsonDocument.Parse(record.argsJson))
                 {
-                    case "build_shader_knowledge_base": result = BuildKnowledgeBase(args.RootElement, record); break;
-                    case "refresh_and_compile_assets": return RunCompileAsync(args.RootElement, record).ContinueWith(task => CompleteJob(record, task));
-                    case "ensure_validation_scene": result = EnsureValidationScene(args.RootElement, record); break;
-                    case "capture_validation": result = CaptureValidation(args.RootElement, record); break;
-                    case "create_shader_checkpoint": result = CreateCheckpoint(args.RootElement, record); break;
-                    default: throw new InvalidOperationException("Unsupported job type: " + record.jobType);
+                    object result;
+                    switch (record.jobType)
+                    {
+                        case "build_shader_knowledge_base": result = BuildKnowledgeBase(args.RootElement, record); break;
+                        case "refresh_and_compile_assets": return RunCompileAsync(args.RootElement, record).ContinueWith(task => CompleteJob(record, task));
+                        case "ensure_validation_scene": result = EnsureValidationScene(args.RootElement, record); break;
+                        case "capture_validation": result = CaptureValidation(args.RootElement, record); break;
+                        case "create_shader_checkpoint": result = CreateCheckpoint(args.RootElement, record); break;
+                        default: throw new InvalidOperationException("Unsupported job type: " + record.jobType);
+                    }
+                    record.resultJson = JsonSerializer.Serialize(result, JsonOptions);
+                    record.status = "succeeded";
                 }
-                record.resultJson = JsonSerializer.Serialize(result, JsonOptions);
-                record.status = "succeeded";
             }
             catch (Exception exception)
             {
@@ -1257,7 +1330,7 @@ namespace UnityMcp.Editor
         private static object[] ReadJsonArray(string path)
         {
             if (!File.Exists(path)) return Array.Empty<object>();
-            try { using var doc = JsonDocument.Parse(File.ReadAllText(path)); return doc.RootElement.ValueKind == JsonValueKind.Array ? doc.RootElement.EnumerateArray().Select(item => (object)item.GetRawText()).ToArray() : new object[] { doc.RootElement.GetRawText() }; }
+            try { using (var doc = JsonDocument.Parse(File.ReadAllText(path))) { return doc.RootElement.ValueKind == JsonValueKind.Array ? doc.RootElement.EnumerateArray().Select(item => (object)item.GetRawText()).ToArray() : new object[] { doc.RootElement.GetRawText() }; } }
             catch { return Array.Empty<object>(); }
         }
 
@@ -1274,7 +1347,7 @@ namespace UnityMcp.Editor
         private static string TryGetRunId(JsonElement args) { if (args.TryGetProperty("operationContext", out var context)) return GetString(context, "runId"); return GetString(args, "runId"); }
         private static string Revision(string path) => Hash(File.ReadAllText(path));
         private static string Hash(string text) => Hash(Encoding.UTF8.GetBytes(text));
-        private static string Hash(byte[] bytes) { using var sha = SHA256.Create(); return BitConverter.ToString(sha.ComputeHash(bytes)).Replace("-", "").ToLowerInvariant(); }
+        private static string Hash(byte[] bytes) { using (var sha = SHA256.Create()) { return BitConverter.ToString(sha.ComputeHash(bytes)).Replace("-", "").ToLowerInvariant(); } }
         private static string SafeName(string path) => path.Replace('/', '_').Replace('\\', '_').Replace(':', '_');
         private static bool IsGeneratedPath(string path) => path.Replace('\\', '/').StartsWith(GeneratedRoot, StringComparison.Ordinal);
         private static bool IsArtifactPath(string path) { var normalized = path.Replace('\\', '/'); return normalized.StartsWith(KnowledgeRoot, StringComparison.Ordinal) || normalized.StartsWith(RunsRoot, StringComparison.Ordinal); }
@@ -1307,8 +1380,10 @@ namespace UnityMcp.Editor
         private static object ParseStoredJson(string json)
         {
             if (string.IsNullOrEmpty(json)) return null;
-            using var document = JsonDocument.Parse(json);
-            return document.RootElement.Clone();
+            using (var document = JsonDocument.Parse(json))
+            {
+                return document.RootElement.Clone();
+            }
         }
 
         [Serializable] private sealed class JobRecord { public string jobId; public string jobType; public string status; public string createdAtUtc; public string completedAtUtc; public string argsJson; public string contextJson; public string resultJson; public string error; public readonly List<string> artifacts = new List<string>(); }
