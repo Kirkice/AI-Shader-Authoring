@@ -1,0 +1,383 @@
+--- before
+// =====================================================================================
+// PBR Fresnel Pulse Dissolve —— Metallic-Roughness PBR + 溶解/呼吸/菲涅尔自发光
+// 效果顺序：噪声裁剪 → 溶解边缘光 → 呼吸光 → 菲涅尔边缘光 → 最终 Emission。
+// =====================================================================================
+Shader "AIShader/Generated/PBR Fresnel Pulse Dissolve"
+{
+    Properties
+    {
+        [MainTexture] _BaseMap("基础贴图", 2D) = "white" {}
+        [MainColor] _BaseColor("基础色", Color) = (1, 1, 1, 1)
+        _Metallic("金属度", Range(0, 1)) = 0
+        _Smoothness("光滑度", Range(0, 1)) = 0.5
+        _Cutoff("基础 Alpha 裁剪阈值", Range(0, 1)) = 0.5
+
+        [HDR] _EmissionColor("基础自发光颜色", Color) = (0, 0, 0, 1)
+        _EmissionMap("基础自发光贴图", 2D) = "white" {}
+
+        [HDR] _FresnelColor("菲涅尔边缘光颜色", Color) = (0.1, 0.6, 1, 1)
+        _FresnelIntensity("菲涅尔边缘光强度", Range(0, 10)) = 2
+        _FresnelPower("菲涅尔边缘光衰减", Range(0.5, 8)) = 3
+
+        [HDR] _PulseColor("呼吸自发光颜色", Color) = (0.1, 0.5, 1, 1)
+        _PulseIntensity("呼吸自发光强度", Range(0, 10)) = 1
+        _PulseSpeed("呼吸速度", Range(0, 10)) = 1
+        _PulseMin("呼吸最低亮度", Range(0, 1)) = 0.2
+
+        _DissolveMap("溶解噪声贴图", 2D) = "white" {}
+        _DissolveAmount("溶解程度", Range(0, 1)) = 0
+        _DissolveEdgeWidth("溶解边缘宽度", Range(0.001, 0.5)) = 0.08
+        [HDR] _DissolveEdgeColor("溶解边缘颜色", Color) = (1, 0.25, 0.02, 1)
+        _DissolveEdgeIntensity("溶解边缘强度", Range(0, 10)) = 3
+    }
+
+    SubShader
+    {
+        Tags { "RenderPipeline"="UniversalPipeline" "RenderType"="TransparentCutout" "Queue"="AlphaTest" "UniversalMaterialType"="Lit" }
+        LOD 300
+
+        Pass
+        {
+            Name "ForwardLit"
+            Tags { "LightMode"="UniversalForward" }
+            ZWrite On
+            Cull Back
+
+            HLSLPROGRAM
+            #pragma target 3.5
+            #pragma vertex vert
+            #pragma fragment frag
+
+            // 继承 URP 前向光照、阴影、雾与实例化变体。
+            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE _MAIN_LIGHT_SHADOWS_SCREEN
+            #pragma multi_compile _ _ADDITIONAL_LIGHTS_VERTEX _ADDITIONAL_LIGHTS
+            #pragma multi_compile_fragment _ _ADDITIONAL_LIGHT_SHADOWS
+            #pragma multi_compile_fragment _ _SHADOWS_SOFT _SHADOWS_SOFT_LOW _SHADOWS_SOFT_MEDIUM _SHADOWS_SOFT_HIGH
+            #pragma multi_compile_fog
+            #pragma multi_compile_instancing
+
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+
+            TEXTURE2D(_BaseMap); SAMPLER(sampler_BaseMap);
+            TEXTURE2D(_EmissionMap); SAMPLER(sampler_EmissionMap);
+            TEXTURE2D(_DissolveMap); SAMPLER(sampler_DissolveMap);
+
+            CBUFFER_START(UnityPerMaterial)
+                float4 _BaseMap_ST;
+                float4 _EmissionMap_ST;
+                float4 _DissolveMap_ST;
+                half4 _BaseColor;
+                half _Metallic;
+                half _Smoothness;
+                half _Cutoff;
+                half4 _EmissionColor;
+                half4 _FresnelColor;
+                half _FresnelIntensity;
+                half _FresnelPower;
+                half4 _PulseColor;
+                half _PulseIntensity;
+                half _PulseSpeed;
+                half _PulseMin;
+                half _DissolveAmount;
+                half _DissolveEdgeWidth;
+                half4 _DissolveEdgeColor;
+                half _DissolveEdgeIntensity;
+            CBUFFER_END
+
+            struct Attributes
+            {
+                float4 positionOS : POSITION;
+                float3 normalOS : NORMAL;
+                float2 uv : TEXCOORD0;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
+            };
+
+            struct Varyings
+            {
+                float4 positionCS : SV_POSITION;
+                float3 positionWS : TEXCOORD0;
+                half3 normalWS : TEXCOORD1;
+                float2 uv : TEXCOORD2;
+                half fogFactor : TEXCOORD3;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
+                UNITY_VERTEX_OUTPUT_STEREO
+            };
+
+            Varyings vert(Attributes input)
+            {
+                Varyings output = (Varyings)0;
+                UNITY_SETUP_INSTANCE_ID(input);
+                UNITY_TRANSFER_INSTANCE_ID(input, output);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
+                VertexPositionInputs positionInput = GetVertexPositionInputs(input.positionOS.xyz);
+                output.positionCS = positionInput.positionCS;
+                output.positionWS = positionInput.positionWS;
+                output.normalWS = TransformObjectToWorldNormal(input.normalOS);
+                output.uv = input.uv;
+                output.fogFactor = ComputeFogFactor(positionInput.positionCS.z);
+                return output;
+            }
+
+            half4 frag(Varyings input) : SV_Target
+            {
+                UNITY_SETUP_INSTANCE_ID(input);
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
+
+                float2 baseUv = TRANSFORM_TEX(input.uv, _BaseMap);
+                float2 emissionUv = TRANSFORM_TEX(input.uv, _EmissionMap);
+                float2 dissolveUv = TRANSFORM_TEX(input.uv, _DissolveMap);
+                half4 baseSample = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, baseUv) * _BaseColor;
+
+                // 1) 噪声遮罩裁剪：低于溶解程度的像素被剔除。
+                half dissolveNoise = SAMPLE_TEXTURE2D(_DissolveMap, sampler_DissolveMap, dissolveUv).r;
+                clip(dissolveNoise - _DissolveAmount);
+                AlphaDiscard(baseSample.a, _Cutoff);
+
+                half3 normalWS = NormalizeNormalPerPixel(input.normalWS);
+                half3 viewDirWS = SafeNormalize(GetWorldSpaceNormalizeViewDir(input.positionWS));
+                InputData inputData = (InputData)0;
+                inputData.positionWS = input.positionWS;
+                inputData.normalWS = normalWS;
+                inputData.viewDirectionWS = viewDirWS;
+                inputData.shadowCoord = TransformWorldToShadowCoord(input.positionWS);
+                inputData.fogCoord = input.fogFactor;
+                inputData.vertexLighting = VertexLighting(input.positionWS, normalWS);
+                inputData.bakedGI = SampleSH(normalWS);
+                inputData.normalizedScreenSpaceUV = GetNormalizedScreenSpaceUV(input.positionCS);
+
+                SurfaceData surfaceData = (SurfaceData)0;
+                surfaceData.albedo = baseSample.rgb;
+                surfaceData.metallic = _Metallic;
+                surfaceData.specular = half3(0, 0, 0);
+                surfaceData.smoothness = _Smoothness;
+                surfaceData.normalTS = half3(0, 0, 1);
+                surfaceData.occlusion = 1;
+                surfaceData.alpha = baseSample.a;
+                surfaceData.clearCoatMask = 0;
+                surfaceData.clearCoatSmoothness = 0;
+
+                // 2) 溶解边缘自发光：仅在未被裁剪一侧的窄带内发光。
+                half dissolveEdge = 1.0h - smoothstep(_DissolveAmount, _DissolveAmount + _DissolveEdgeWidth, dissolveNoise);
+                half3 dissolveEmission = _DissolveEdgeColor.rgb * (dissolveEdge * _DissolveEdgeIntensity);
+                // 3) 呼吸自发光：正弦波映射到 [最低亮度, 1]。
+                half pulse = lerp(_PulseMin, 1.0h, 0.5h + 0.5h * sin(_Time.y * _PulseSpeed));
+                half3 pulseEmission = _PulseColor.rgb * (pulse * _PulseIntensity);
+                // 4) 菲涅尔边缘光：作为艺术性附加 Emission，不替代 BRDF 的物理菲涅尔。
+                half fresnel = pow(1.0h - saturate(dot(normalWS, viewDirWS)), _FresnelPower);
+                half3 fresnelEmission = _FresnelColor.rgb * (fresnel * _FresnelIntensity);
+                // 5) 交由 URP PBR 统一完成光照、GI 与最终颜色合成。
+                half3 baseEmission = SAMPLE_TEXTURE2D(_EmissionMap, sampler_EmissionMap, emissionUv).rgb * _EmissionColor.rgb;
+                surfaceData.emission = baseEmission + dissolveEmission + pulseEmission + fresnelEmission;
+
+                half4 color = UniversalFragmentPBR(inputData, surfaceData);
+                color.rgb = MixFog(color.rgb, inputData.fogCoord);
+                return color;
+            }
+            ENDHLSL
+        }
+    }
+    FallBack "Hidden/Universal Render Pipeline/FallbackError"
+}
+
++++ after
+// =====================================================================================
+// PBR Fresnel Pulse Dissolve —— Metallic-Roughness PBR + 溶解/呼吸/菲涅尔自发光
+// 效果顺序：噪声裁剪 → 溶解边缘光 → 呼吸光 → 菲涅尔边缘光 → 最终 Emission。
+// =====================================================================================
+Shader "AIShader/Generated/PBR Fresnel Pulse Dissolve"
+{
+    Properties
+    {
+        // # FeatureDes:支持金属度工作流 PBR、噪声溶解、溶解边缘光、呼吸自发光和菲涅尔边缘光。
+
+        // # GroupStart:基础设置_BaseSettings
+        // # Label:PBR 表面参数
+        [MainTexture] _BaseMap("基础贴图", 2D) = "white" {}
+        [MainColor] _BaseColor("基础色", Color) = (1, 1, 1, 1)
+        _Metallic("金属度", Range(0, 1)) = 0
+        _Smoothness("光滑度", Range(0, 1)) = 0.5
+        _Cutoff("基础 Alpha 裁剪阈值", Range(0, 1)) = 0.5
+        // # GroupEnd
+
+        // # GroupStart:基础发光_BaseEmission
+        // # Label:基础自发光参数
+        [HDR] _EmissionColor("基础自发光颜色", Color) = (0, 0, 0, 1)
+        _EmissionMap("基础自发光贴图", 2D) = "white" {}
+        // # GroupEnd
+
+        // # GroupStart:呼吸发光_PulseEmission
+        // # Label:随时间周期变化的附加发光
+        [HDR] _PulseColor("呼吸自发光颜色", Color) = (0.1, 0.5, 1, 1)
+        _PulseIntensity("呼吸自发光强度", Range(0, 10)) = 1
+        _PulseSpeed("呼吸速度", Range(0, 10)) = 1
+        _PulseMin("呼吸最低亮度", Range(0, 1)) = 0.2
+        // # GroupEnd
+
+        // # GroupStart:菲涅尔边缘光_FresnelRim
+        // # Label:视角相关的边缘附加发光
+        [HDR] _FresnelColor("菲涅尔边缘光颜色", Color) = (0.1, 0.6, 1, 1)
+        _FresnelIntensity("菲涅尔边缘光强度", Range(0, 10)) = 2
+        _FresnelPower("菲涅尔边缘光衰减", Range(0.5, 8)) = 3
+        // # GroupEnd
+
+        // # GroupStart:噪声溶解_DissolveEffect
+        // # Label:噪声裁剪与溶解边缘发光
+        _DissolveMap("溶解噪声贴图", 2D) = "white" {}
+        _DissolveAmount("溶解程度", Range(0, 1)) = 0
+        _DissolveEdgeWidth("溶解边缘宽度", Range(0.001, 0.5)) = 0.08
+        [HDR] _DissolveEdgeColor("溶解边缘颜色", Color) = (1, 0.25, 0.02, 1)
+        _DissolveEdgeIntensity("溶解边缘强度", Range(0, 10)) = 3
+        // # GroupEnd
+    }
+
+    SubShader
+    {
+        Tags { "RenderPipeline"="UniversalPipeline" "RenderType"="TransparentCutout" "Queue"="AlphaTest" "UniversalMaterialType"="Lit" }
+        LOD 300
+
+        Pass
+        {
+            Name "ForwardLit"
+            Tags { "LightMode"="UniversalForward" }
+            ZWrite On
+            Cull Back
+
+            HLSLPROGRAM
+            #pragma target 3.5
+            #pragma vertex vert
+            #pragma fragment frag
+
+            // 继承 URP 前向光照、阴影、雾与实例化变体。
+            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE _MAIN_LIGHT_SHADOWS_SCREEN
+            #pragma multi_compile _ _ADDITIONAL_LIGHTS_VERTEX _ADDITIONAL_LIGHTS
+            #pragma multi_compile_fragment _ _ADDITIONAL_LIGHT_SHADOWS
+            #pragma multi_compile_fragment _ _SHADOWS_SOFT _SHADOWS_SOFT_LOW _SHADOWS_SOFT_MEDIUM _SHADOWS_SOFT_HIGH
+            #pragma multi_compile_fog
+            #pragma multi_compile_instancing
+
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+
+            TEXTURE2D(_BaseMap); SAMPLER(sampler_BaseMap);
+            TEXTURE2D(_EmissionMap); SAMPLER(sampler_EmissionMap);
+            TEXTURE2D(_DissolveMap); SAMPLER(sampler_DissolveMap);
+
+            CBUFFER_START(UnityPerMaterial)
+                float4 _BaseMap_ST;
+                float4 _EmissionMap_ST;
+                float4 _DissolveMap_ST;
+                half4 _BaseColor;
+                half _Metallic;
+                half _Smoothness;
+                half _Cutoff;
+                half4 _EmissionColor;
+                half4 _FresnelColor;
+                half _FresnelIntensity;
+                half _FresnelPower;
+                half4 _PulseColor;
+                half _PulseIntensity;
+                half _PulseSpeed;
+                half _PulseMin;
+                half _DissolveAmount;
+                half _DissolveEdgeWidth;
+                half4 _DissolveEdgeColor;
+                half _DissolveEdgeIntensity;
+            CBUFFER_END
+
+            struct Attributes
+            {
+                float4 positionOS : POSITION;
+                float3 normalOS : NORMAL;
+                float2 uv : TEXCOORD0;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
+            };
+
+            struct Varyings
+            {
+                float4 positionCS : SV_POSITION;
+                float3 positionWS : TEXCOORD0;
+                half3 normalWS : TEXCOORD1;
+                float2 uv : TEXCOORD2;
+                half fogFactor : TEXCOORD3;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
+                UNITY_VERTEX_OUTPUT_STEREO
+            };
+
+            Varyings vert(Attributes input)
+            {
+                Varyings output = (Varyings)0;
+                UNITY_SETUP_INSTANCE_ID(input);
+                UNITY_TRANSFER_INSTANCE_ID(input, output);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
+                VertexPositionInputs positionInput = GetVertexPositionInputs(input.positionOS.xyz);
+                output.positionCS = positionInput.positionCS;
+                output.positionWS = positionInput.positionWS;
+                output.normalWS = TransformObjectToWorldNormal(input.normalOS);
+                output.uv = input.uv;
+                output.fogFactor = ComputeFogFactor(positionInput.positionCS.z);
+                return output;
+            }
+
+            half4 frag(Varyings input) : SV_Target
+            {
+                UNITY_SETUP_INSTANCE_ID(input);
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
+
+                float2 baseUv = TRANSFORM_TEX(input.uv, _BaseMap);
+                float2 emissionUv = TRANSFORM_TEX(input.uv, _EmissionMap);
+                float2 dissolveUv = TRANSFORM_TEX(input.uv, _DissolveMap);
+                half4 baseSample = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, baseUv) * _BaseColor;
+
+                // 1) 噪声遮罩裁剪：低于溶解程度的像素被剔除。
+                half dissolveNoise = SAMPLE_TEXTURE2D(_DissolveMap, sampler_DissolveMap, dissolveUv).r;
+                clip(dissolveNoise - _DissolveAmount);
+                AlphaDiscard(baseSample.a, _Cutoff);
+
+                half3 normalWS = NormalizeNormalPerPixel(input.normalWS);
+                half3 viewDirWS = SafeNormalize(GetWorldSpaceNormalizeViewDir(input.positionWS));
+                InputData inputData = (InputData)0;
+                inputData.positionWS = input.positionWS;
+                inputData.normalWS = normalWS;
+                inputData.viewDirectionWS = viewDirWS;
+                inputData.shadowCoord = TransformWorldToShadowCoord(input.positionWS);
+                inputData.fogCoord = input.fogFactor;
+                inputData.vertexLighting = VertexLighting(input.positionWS, normalWS);
+                inputData.bakedGI = SampleSH(normalWS);
+                inputData.normalizedScreenSpaceUV = GetNormalizedScreenSpaceUV(input.positionCS);
+
+                SurfaceData surfaceData = (SurfaceData)0;
+                surfaceData.albedo = baseSample.rgb;
+                surfaceData.metallic = _Metallic;
+                surfaceData.specular = half3(0, 0, 0);
+                surfaceData.smoothness = _Smoothness;
+                surfaceData.normalTS = half3(0, 0, 1);
+                surfaceData.occlusion = 1;
+                surfaceData.alpha = baseSample.a;
+                surfaceData.clearCoatMask = 0;
+                surfaceData.clearCoatSmoothness = 0;
+
+                // 2) 溶解边缘自发光：仅在未被裁剪一侧的窄带内发光。
+                half dissolveEdge = 1.0h - smoothstep(_DissolveAmount, _DissolveAmount + _DissolveEdgeWidth, dissolveNoise);
+                half3 dissolveEmission = _DissolveEdgeColor.rgb * (dissolveEdge * _DissolveEdgeIntensity);
+                // 3) 呼吸自发光：正弦波映射到 [最低亮度, 1]。
+                half pulse = lerp(_PulseMin, 1.0h, 0.5h + 0.5h * sin(_Time.y * _PulseSpeed));
+                half3 pulseEmission = _PulseColor.rgb * (pulse * _PulseIntensity);
+                // 4) 菲涅尔边缘光：作为艺术性附加 Emission，不替代 BRDF 的物理菲涅尔。
+                half fresnel = pow(1.0h - saturate(dot(normalWS, viewDirWS)), _FresnelPower);
+                half3 fresnelEmission = _FresnelColor.rgb * (fresnel * _FresnelIntensity);
+                // 5) 交由 URP PBR 统一完成光照、GI 与最终颜色合成。
+                half3 baseEmission = SAMPLE_TEXTURE2D(_EmissionMap, sampler_EmissionMap, emissionUv).rgb * _EmissionColor.rgb;
+                surfaceData.emission = baseEmission + dissolveEmission + pulseEmission + fresnelEmission;
+
+                half4 color = UniversalFragmentPBR(inputData, surfaceData);
+                color.rgb = MixFog(color.rgb, inputData.fogCoord);
+                return color;
+            }
+            ENDHLSL
+        }
+    }
+    FallBack "Hidden/Universal Render Pipeline/FallbackError"
+    CustomEditor "MarkupShaderGUI.MarkupShaderGUI"
+}

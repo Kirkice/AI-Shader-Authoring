@@ -801,10 +801,11 @@ MarkupShaderGUIAuthoringRequest
 2. Unity 刷新与 Shader 编译（`refresh_and_compile_assets` → `get_unity_job`）。
 3. Console 读取（`get_console_diagnostics`）：确认无新增 Error；有错则回到 Step 7 修复循环。
 4. 当 `shaderGuiAuthoring.required = true` 时，确认 Markup 注释的解析与 Inspector 行为符合委派计划；失败则回到 Step 7.5 修复。
-5. 在确定性验证场景中配置球体、相机、主光、环境和材质。
-5. 输出当前阶段的目标图、参考图、Debug 图。
-6. 运行当前阶段所需的参数扫描。
-7. 保存 `PASS`、`REVISE` 或 `BLOCKED` 及其证据（必须包含第 2、3 步的诊断结果）。
+5. **验证场景预检**：在调用 `ensure_validation_scene` 前，必须确认目标 `scenePath`、`cameraPath`、`objectPath` 与 `materialPath` 均存在；目标 Renderer 与相机必须属于将被打开的同一场景，且相机朝向、FOV、裁剪面与目标包围盒能形成可辨认的目标轮廓。不得以当前编辑器已打开场景的 Hierarchy 代替对磁盘验证场景的核验。
+6. **基线与响应验证**：先捕获不替换目标材质的参考图，再至少捕获两张具有显著参数差异的目标材质图（例如溶解 `0` / `0.6`，或 Emission `0` / 高亮）。必须人工复核目标几何确实位于画面内，并确认目标材质变化使 PNG `contentHash` 或目标区域像素发生变化；否则立即 `REVISE`，先修复相机/场景/目标绑定，不得继续做效果判断。
+7. 输出当前阶段的目标图、参考图、Debug 图；Alpha Clip 或透明需求还必须输出 Alpha 灰度图与裁剪遮罩图。
+8. 运行当前阶段所需的参数扫描，并记录每个扫描点的材质 revision、参数值、截图 hash 与人工结论。
+9. 保存 `PASS`、`REVISE` 或 `BLOCKED` 及其证据（必须包含第 2、3 步的诊断结果）。
 
 ### PBR 阶段顺序
 
@@ -841,7 +842,7 @@ Stage 10 法线、Alpha Clip、透明等首期扩展
 
 ### 验证证据的硬性防线
 
-像素统计只能证明「渲染结果非空」，不能证明「渲染了目标」。出现以下任一情况时**不得**判定 `PASS`，必须记为 `REVISE` 并在证据中说明：
+像素统计只能证明「渲染结果非空」，不能证明「渲染了目标」。`ensure_validation_scene` 仅验证资产路径、场景路径和层级路径可读取，不等同于目标已进入相机视锥或材质替换已对画面生效；因此必须执行固定验证顺序中的预检、参考图和差异化材质捕获。出现以下任一情况时**不得**判定 `PASS`，必须记为 `REVISE` 并在证据中说明：
 
 1. **材质替换无效**：两次 `capture_validation` 的 PNG `contentHash` 完全一致。材质 revision 变了而像素不变，说明画面对被替换材质零响应，目标物体不在画面中。
 2. **背景基线不可靠**：统计基线取自 `pixels[0]`（左上角）时，渐变天空盒等非纯色背景会让 `nonBackgroundRatio` 量到背景自身的差异而非目标轮廓（可高达 `0.9+`）。此时必须改用固定背景色或真实背景采样，并人工复核截图。

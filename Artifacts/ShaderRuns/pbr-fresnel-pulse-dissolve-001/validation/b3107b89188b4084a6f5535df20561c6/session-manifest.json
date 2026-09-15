@@ -1,0 +1,19 @@
+{
+  "sessionId": "b3107b89188b4084a6f5535df20561c6",
+  "createdAtUtc": "2026-09-15T03:40:08.4140681Z",
+  "validationScene": {
+    "scenePath": "Packages/com.ai.shader-authoring/Tests/AI Shader Authoring.unity",
+    "cameraPath": "Main Camera",
+    "width": 768,
+    "height": 768
+  },
+  "target": {
+    "objectPath": "Sphere",
+    "materialPath": "Assets/AIShader/Generated/PBR_FresnelPulseDissolve.mat"
+  },
+  "criteria": {
+    "minAverageLuminance": 0.0199999996,
+    "minNonBackgroundRatio": 0.0500000007
+  },
+  "sceneMutation": "The scene is opened additively, the material is restored after capture, and the scene is never saved."
+}

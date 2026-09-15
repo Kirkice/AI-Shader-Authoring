@@ -1,0 +1,19 @@
+{
+  "sessionId": "8fae8628e4714d6eb9b069ee01b6d1e5",
+  "createdAtUtc": "2026-09-15T04:02:35.6416077Z",
+  "validationScene": {
+    "scenePath": "Assets/Scenes/SampleScene.unity",
+    "cameraPath": "Main Camera",
+    "width": 1024,
+    "height": 1024
+  },
+  "target": {
+    "objectPath": "Sphere",
+    "materialPath": "Assets/AIShader/Generated/PBR_FresnelPulseDissolve.mat"
+  },
+  "criteria": {
+    "minAverageLuminance": 0,
+    "minNonBackgroundRatio": 0
+  },
+  "sceneMutation": "The scene is opened additively, the material is restored after capture, and the scene is never saved."
+}
