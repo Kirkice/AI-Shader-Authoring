@@ -90,7 +90,9 @@ namespace UnityMcp.Editor
 
         private void OnGUI()
         {
-            if (panelTexture == null) CreateStyles();
+            // Unity 在域重载和窗口布局恢复后可能保留纹理引用，但不会保留普通 C# 的 GUIStyle 字段。
+            // 此处必须完整验证，不能只检查 panelTexture。
+            if (!AreGuiResourcesReady()) CreateStyles();
 
             var canvas = new Rect(0f, 0f, position.width, position.height);
             EditorGUI.DrawRect(canvas, new Color(0.22f, 0.22f, 0.22f));
@@ -127,12 +129,12 @@ namespace UnityMcp.Editor
                     ? "本地 Unity MCP 服务正在等待 AI 客户端连接。"
                     : "启用本地 Unity MCP 服务后，AI 客户端即可连接当前 Unity 编辑器。";
 
-            GUI.Label(new Rect(rect.x + 12f, rect.y + 10f, 160f, 17f), "本地 MCP", eyebrowStyle);
+            SafeLabel(new Rect(rect.x + 12f, rect.y + 10f, 160f, 17f), "本地 MCP", eyebrowStyle);
             DrawStatusDot(new Rect(rect.x + 13f, rect.y + 37f, 9f, 9f), stateColor);
-            GUI.Label(new Rect(rect.x + 29f, rect.y + 31f, rect.width - 220f, 22f), stateText, statusStyle);
+            SafeLabel(new Rect(rect.x + 29f, rect.y + 31f, rect.width - 220f, 22f), stateText, statusStyle);
             DrawChip(new Rect(rect.xMax - 170f, rect.y + 27f, 158f, 25f), chipText, stateColor);
-            GUI.Label(new Rect(rect.x + 13f, rect.y + 60f, rect.width - 26f, 32f), summary, bodyStyle);
-            GUI.Label(new Rect(rect.x + 13f, rect.y + 94f, rect.width - 26f, 19f), GetEndpointDisplay(), endpointStyle);
+            SafeLabel(new Rect(rect.x + 13f, rect.y + 60f, rect.width - 26f, 32f), summary, bodyStyle);
+            SafeLabel(new Rect(rect.x + 13f, rect.y + 94f, rect.width - 26f, 19f), GetEndpointDisplay(), endpointStyle);
 
             const float gap = 8f;
             var actionsY = rect.yMax - 36f;
@@ -226,6 +228,20 @@ namespace UnityMcp.Editor
             }
         }
 
+        private static void SafeLabel(Rect rect, string text, GUIStyle style)
+        {
+            if (style != null)
+            {
+                GUI.Label(rect, text ?? string.Empty, style);
+                return;
+            }
+
+            // 只在 Unity 重载期间的单帧降级路径使用；明确设为浅色，避免默认 GUI 样式在深色面板上显示黑字。
+            var fallbackStyle = new GUIStyle(EditorStyles.label);
+            fallbackStyle.normal.textColor = new Color(0.84f, 0.84f, 0.84f);
+            GUI.Label(rect, text ?? string.Empty, fallbackStyle);
+        }
+
         private static void DrawStatusDot(Rect rect, Color color)
         {
             var previous = GUI.color;
@@ -237,7 +253,7 @@ namespace UnityMcp.Editor
         private void DrawChip(Rect rect, string label, Color color)
         {
             GUI.DrawTexture(rect, color == new Color(0.36f, 0.82f, 0.43f) ? successTexture : UnityMcpConnection.IsServiceEnabled ? warningTexture : errorTexture);
-            GUI.Label(rect, label.ToUpperInvariant(), chipStyle);
+            SafeLabel(rect, label.ToUpperInvariant(), chipStyle);
         }
 
         private void DrawRoundedPanel(Rect rect, Texture2D texture)
@@ -252,7 +268,26 @@ namespace UnityMcp.Editor
 
         private static void DrawSectionLabel(Rect rect, string label)
         {
-            GUI.Label(rect, label, EditorStyles.miniBoldLabel);
+            SafeLabel(rect, label, EditorStyles.miniBoldLabel);
+        }
+
+        private bool AreGuiResourcesReady()
+        {
+            return panelTexture != null
+                && selectedPanelTexture != null
+                && secondaryButtonTexture != null
+                && successTexture != null
+                && warningTexture != null
+                && errorTexture != null
+                && eyebrowStyle != null
+                && headingStyle != null
+                && statusStyle != null
+                && bodyStyle != null
+                && endpointStyle != null
+                && chipStyle != null
+                && secondaryButtonStyle != null
+                && toolTitleStyle != null
+                && toolSummaryStyle != null;
         }
 
         private void CreateStyles()
