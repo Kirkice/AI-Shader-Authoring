@@ -46,8 +46,8 @@ description: 将自然语言材质需求规范化为标准 PBR 材质意图，�
 9. 任何 `pass` 必须有静态检查、Unity Console、截图或数值证据；截图不是唯一真值。
 10. `revise` 必须保留当前工件和失败证据；`blocked` 必须说明缺失能力或最小人工决策。
 11. 生成的 Shader 必须与工程既有 Shader 保持同一风格：工程已有 Pass 声明的关键字矩阵、`Attributes`/`Varyings` 布局、Pass 标签与命名约定必须一并继承；任务未映射到的能力以恒等接线保留结构，而不是省略关键字或结构。
-12. 选择某个参考 Shader 作为生成基线时，必须将其 `Properties`、属性类型/默认值、纹理通道约定、关联关键字、`CBUFFER` 字段、采样与 `SurfaceData` 接线视作一个不可拆分的材质工艺契约；不得以「需求未明确提出」「本次用不到」或「最小实现」为由删除其中任一能力。
-13. 参考 Shader 存在多工作流或互斥变体时（例如 Metallic 与 Specular），必须完整保留每套工作流的属性、贴图、关键字与运行时接线；不得只保留默认工作流。新增效果只能叠加在参考基线之上，不得替代、短接或降级原有工作流。
+12. 选择某个参考 Shader 作为生成基线时，必须将其材质语义、属性类型/默认值、纹理打包通道约定、关联关键字、`CBUFFER` 字段、采样与 `SurfaceData` 接线视作一个不可拆分的材质工艺契约；属性名称仅是当前管线的实现细节，不得跨管线硬编码或误当作通用规范。不得以「需求未明确提出」「本次用不到」或「最小实现」为由删除其中任一语义能力。
+13. 参考 Shader 存在多工作流或互斥变体时（例如 Metallic 与 Specular），必须完整保留每套工作流的材质语义、贴图打包、关键字与运行时接线；不得只保留默认工作流。新增效果只能叠加在参考基线之上，不得替代、短接或降级原有工作流。
 14. 生成的 Shader 与 HLSL 代码注释必须使用中文；注释说明意图、约束与来源，不复述代码字面。
 
 ## 状态机
@@ -730,12 +730,12 @@ ShaderCodePlan
 生成资产不是「最小可用 Shader」，而是**工程既有 Shader 的同工艺派生实现**。这里的“对齐”不仅指代码外观，而是保证同一项目中的美术材质、贴图打包规则和 Inspector 操作方式可复用：
 
 1. 以知识库中的工程样本（`attributesVaryingsStyle`、`fragmentProgramStyle`、`keywords`、`renderStates`）为基线，而不是凭记忆。
-2. 在写入前必须建立 `ReferenceShaderParityManifest`。它逐项列出参考 Shader 的：`Properties`（名称、显示名、类型、默认值）、纹理通道语义、隐藏兼容属性、关联 `#pragma`、`CBUFFER` 字段、采样/解包逻辑、`SurfaceData` 接线、Render State 与 Pass；并明确每项在目标 Shader 中的对应锚点。此清单是 Code Plan 的必填证据，不得仅以文字概述代替。
+2. 在写入前必须建立 `ReferenceShaderParityManifest`。它逐项列出参考 Shader 的材质语义、属性（名称、显示名、类型、默认值）、纹理打包通道、隐藏兼容属性、关联 `#pragma`、`CBUFFER` 字段、采样/解包逻辑、`SurfaceData` 接线、Render State 与 Pass；并明确每项在目标 Shader 中的对应锚点。属性名属于管线本地实现，Manifest 必须分别记录「语义标识」与「当前管线属性名」，不得只按属性名做跨管线对齐。此清单是 Code Plan 的必填证据，不得仅以文字概述代替。
 3. 工程 Pass 已声明的关键字必须完整继承，包括随版本更名的关键字（例如 `_CLUSTER_LIGHT_LOOP` 启用后取代已废弃的 `_FORWARD_PLUS`）；删除任何关键字都必须给出证据与理由。
-4. 参考 Shader 的属性契约必须完整继承：即使本次需求未提及，也必须保留基础贴图、Metallic/Specular 工作流、MetallicGloss/SpecGloss 贴图、法线、AO、视差、细节贴图、Emission、透明/裁剪控制、兼容迁移属性及其原有通道约定。不得以「最小可用 PBR」「本次效果不使用」或「降低变体数」为由省略。
-5. 对参考 Shader 的多工作流或互斥变体，必须同时保留属性、贴图、关键字、采样和 `SurfaceData` 接线。例如参考 Lit 同时包含 `_MetallicGlossMap` / `_METALLICSPECGLOSSMAP` 与 `_SpecGlossMap` / `_SPECULAR_SETUP` 时，目标 Shader 必须同时实现两条路径；只实现标量 Metallic 不构成对齐。
+4. 参考 Shader 的**材质语义契约**必须完整继承：即使本次需求未提及，也必须保留基础色/透明度、法线、遮蔽、金属度或镜面反射率、粗糙度或光滑度、Emission、细节层、视差、透明/裁剪控制、兼容迁移语义及其原有打包约定。具体属性名和贴图布局必须以当前目标管线及工程基线为准：URP 可为 MetallicGloss/SpecGloss；其他管线或项目可为 MSO（金属/光滑/AO）、RMO（粗糙/金属/AO）或其他已核验布局。不得把 URP 属性名强加到非 URP 管线，也不得以「最小可用 PBR」「本次效果不使用」或「降低变体数」为由省略语义能力。
+5. 对参考 Shader 的多工作流或互斥变体，必须同时保留属性、贴图打包、关键字、采样和 `SurfaceData`（或目标管线等价材质输入）接线。例如 URP Lit 同时包含 `_MetallicGlossMap` / `_METALLICSPECGLOSSMAP` 与 `_SpecGlossMap` / `_SPECULAR_SETUP` 时，目标 Shader 必须同时实现两条路径；若目标工程采用 MSO、RMO 或自定义打包，则必须完整继承其已核验的通道映射与解包逻辑，而不是套用 URP 命名或通道规则。
 6. 任务未用到的能力以恒等接线保留结构（例如 Clear Coat 掩码置 `0`、法线贴图槽置默认值），不得因「本次用不到」而裁剪工程既有结构。新增效果仅允许在完整基线之后叠加，不能替换、旁路或降级既有 PBR 输入。
-7. 直接复用工程既有的 `Attributes` / `Varyings` 字段与顺序、渲染状态、Pass 标签和命名，除非 Code Plan 明确记录偏差。
+7. 直接复用当前目标管线/工程既有的 `Attributes` / `Varyings` 字段与顺序、渲染状态、Pass 标签和命名，除非 Code Plan 明确记录偏差；不得将其他渲染管线的 Include、宏、Pass 或属性名直接移植过来。
 8. 每条差异化都必须写入 Code Plan 的 `plannedChanges`，并在证据中标注来源与置信度。
 9. 若工程样本中不存在可对照的实现，必须在 `unknowns` 中记录，而不是自行发明风格。
 
@@ -743,9 +743,9 @@ ShaderCodePlan
 
 在首次写 Shader 前与最终 `PASS` 前各执行一次 `ReferenceShaderParityManifest` 核对：
 
-- 任一参考属性、关键字、贴图采样、通道约定、工作流分支、Pass 或兼容属性缺失，且不存在用户明确批准的偏差记录：判定 `REVISE`，禁止进入视觉验收或 `PASS`。
-- 仅在 `Properties` 中声明贴图但未声明对应关键字、未采样、未写入 `SurfaceData`，视为缺失，不得算作对齐。
-- 参考材质的现有 `.mat` 必须能无丢失地迁移到目标 Shader：检查同名属性可解析、纹理槽不丢失、默认值/通道语义一致；失败即 `REVISE`。
+- 任一参考材质语义、关键字、贴图采样、通道约定、工作流分支、Pass 或兼容语义缺失，且不存在用户明确批准的偏差记录：判定 `REVISE`，禁止进入视觉验收或 `PASS`。
+- 仅在 `Properties` 中声明贴图但未声明对应关键字、未采样、未写入 `SurfaceData`（或目标管线等价输入），视为缺失，不得算作对齐。
+- 参考材质的现有 `.mat` 必须能无丢失地迁移到目标 Shader：同管线迁移时检查同名属性可解析、纹理槽不丢失、默认值/通道语义一致；跨管线迁移时检查每个源语义都映射到目标管线已核验的等价属性与打包通道，不要求属性同名。失败即 `REVISE`。
 - 用户只需描述新增效果时，默认语义是「在参考 Shader 的完整工艺基线上增加效果」，不是授权精简参考 Shader。
 
 ### 执行后强制 Console 检查（硬性门禁）
