@@ -28,12 +28,19 @@ Unity MCP 位于 [`Editor/Mcp`](../Editor/Mcp/)，并由 [`UnityMcp.Editor.asmde
 | 分组 | 工具 | 说明 |
 | --- | --- | --- |
 | 诊断 | `get_editor_state`、`get_logs` | 返回编辑器状态与 Node 缓存的 Unity 日志。 |
-| 受控 Job | `run_unity_job`、`get_unity_job`、`cancel_unity_job` | 管理知识库、导入编译、验证与 Checkpoint Job。 |
+| 受控 Job | `run_unity_job`、`get_unity_job`、`cancel_unity_job` | 管理知识库、导入编译与验证 Job。 |
 | 知识库 | `get_shader_knowledge_base_status`、`build_shader_knowledge_base`、`query_shader_knowledge_base` | 读取、构建和检索持久化项目 Shader 知识库。 |
 | 资产 | `inspect_shader_structure`、`get_asset_revision`、`write_generated_text_asset` | 读取 Shader 锚点/修订，或在生成目录执行 revision-protected 写入。 |
 | 验证 | `refresh_and_compile_assets`、`ensure_validation_scene`、`capture_validation` | 执行异步导入编译与验证证据采集。 |
-| 回滚 | `create_shader_checkpoint`、`restore_shader_checkpoint` | 创建 Checkpoint；恢复仅面向生成目录文本资产。 |
 | 人工诊断 | `execute_editor_command` | 编译并执行任意 Unity Editor C#，不属于正式 Shader 流程。 |
+
+### 知识库查询
+
+`query_shader_knowledge_base` 接受可选的 `query`、`tags`、`types` 和 `limit` 参数。查询会按词条匹配并按相关度排序，仅返回最多 `limit`（默认 10、最大 50）条结果；`types` 可限定为 `shaderExample`、`functionCard`、`convention` 或 `capability`。未提供查询条件时，仍会按 `limit` 返回各分区中的有限结果，而不会返回完整知识库。
+
+### Job 取消
+
+`cancel_unity_job` 返回实际 Job 状态。当前 `refresh_and_compile_assets` 在导入/等待编译的阶段支持取消，状态会经历 `running` → `cancelling` → `cancelled`；其他同步执行的 Job 会返回当前状态而不会虚报已取消。所有 Job 的最终状态通过 `get_unity_job` 获取。
 
 结构化工具的完整请求/响应定义见 [`unity-mcp-p0-p1-contract.md`](../../../plans/unity-mcp-p0-p1-contract.md)。
 

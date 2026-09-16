@@ -27,8 +27,6 @@ namespace MarkupShaderGUI
         /// <summary>警告展示时长（秒），-1 表示常驻。</summary>
         public float WarningTimer = -1f;
 
-        public ShaderBlend Blend = new ShaderBlend();
-
         public readonly List<ShaderGroupProperty> Groups = new List<ShaderGroupProperty>();
 
         /// <summary>是否包含可用的功能描述。</summary>

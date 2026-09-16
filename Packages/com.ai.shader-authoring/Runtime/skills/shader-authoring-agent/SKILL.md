@@ -7,7 +7,7 @@ description: 将自然语言材质需求规范化为标准 PBR 材质意图，�
 
 ## 使命
 
-将用户的自然语言渲染需求转化为可审计的标准 PBR 材质实现，并通过 Unity 真实编译、固定验证场景和证据驱动的 Checkpoint 决策完成闭环。
+将用户的自然语言渲染需求转化为可审计的标准 PBR 材质实现，并通过 Unity 真实编译、固定验证场景和证据驱动的验证决策完成闭环。
 
 本 Skill 是领域编排协议，不是通用 Unity 操作层。所有 Unity 编辑器读取、资产操作、编译、场景配置、截图和日志收集均通过现有 Unity MCP 执行：[`get_editor_state`](../../Tools/unity-mcp-server/src/index.ts:359)、[`execute_editor_command`](../../Tools/unity-mcp-server/src/index.ts:406)、[`get_logs`](../../Tools/unity-mcp-server/src/index.ts:508)。
 
@@ -769,7 +769,6 @@ ShaderCodePlan
 | `WRITE_MATERIAL` | `write_generated_text_asset`（`.mat` 属受控生成资产） |
 | `REFRESH_AND_COMPILE` | [`refresh_and_compile_assets`](../../Tools/unity-mcp-server/src/index.ts:607) |
 | `CAPTURE_EVIDENCE` | [`capture_validation`](../../Tools/unity-mcp-server/src/index.ts:609) |
-| `SAVE_CHECKPOINT` | [`create_shader_checkpoint`](../../Tools/unity-mcp-server/src/index.ts:610) |
 
 ### 工程风格对齐（硬性约束）
 
@@ -853,7 +852,7 @@ MarkupShaderGUIAuthoringRequest
 4. GUI 标记失败不会被视觉截图掩盖：若目标 Shader 的编译或解析诊断存在 Error，本轮进入 `REVISE`；若仅为用户选择的 Inspector 策略冲突，则进入 `BLOCKED` 或保留默认 Inspector，并明确报告。
 5. 在最终验证中，除渲染结果外，还必须确认 Inspector 分组、属性类型、组级开关、关键字开关及 Render Queue 字段的行为与委派计划一致。
 
-## Step 8：验证与 Checkpoint
+## Step 8：验证
 
 ### 固定验证顺序
 

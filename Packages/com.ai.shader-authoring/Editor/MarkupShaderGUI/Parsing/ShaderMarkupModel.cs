@@ -6,17 +6,6 @@ namespace MarkupShaderGUI
     /// 注释标记解析出的数据模型。
     /// 本文件只描述结构，不依赖 UnityEditor，可被解析层与 GUI 层共同使用。
     /// </summary>
-    public class ShaderConstValue
-    {
-        public const string DEFAULT_BLEND_NAME = "渲染模式";
-        public const string DEFAULT_BLEND_CUTOFF = "_cutoff";
-        public const string DEFAULT_BLEND_SRCBLEDN = "_srcblend";
-        public const string DEFAULT_BLEND_DSTBLEND = "_dstblend";
-        public const string DEFAULT_BLEND_SRCBLENDALPHA = "_srcblendalpha";
-        public const string DEFAULT_BLEND_DSTBLENDALPHA = "_dstblendalpha";
-        public const string DEFAULT_BLEND_SPECULARALPHAMODE = "_specularAlphaMode";
-    }
-
     /// <summary>Shader Properties 块中的一条属性。</summary>
     public class ShaderProperty
     {
@@ -65,26 +54,6 @@ namespace MarkupShaderGUI
         public int Index = -1;
     }
 
-    /// <summary>向量拆分标记的解析结果（当前 GUI 尚未渲染）。</summary>
-    public class ShaderVectorSplit
-    {
-        public List<ShaderVectorValue> vectorValues = new List<ShaderVectorValue>();
-        public List<ShaderEnum> vectorEnums = new List<ShaderEnum>();
-        public List<ShaderToggle> vectorToggles = new List<ShaderToggle>();
-        public int Index = -1;
-    }
-
-    /// <summary>向量拆分中的单个分量。</summary>
-    public class ShaderVectorValue
-    {
-        public string vectorValueName;
-        public string variable;
-        public string channel;
-        public VectorValueType type;
-        public float min = 0.0f;
-        public float max = 1.0f;
-    }
-
     /// <summary>一个折叠组。</summary>
     public class ShaderGroupProperty
     {
@@ -104,19 +73,6 @@ namespace MarkupShaderGUI
 
         public List<ShaderToggle> toggleList = new List<ShaderToggle>();
         public List<ShaderEnum> enumList = new List<ShaderEnum>();
-        public List<ShaderVectorSplit> vectorList = new List<ShaderVectorSplit>();
-    }
-
-    /// <summary>渲染模式（混合模式）标记的解析结果。</summary>
-    public class ShaderBlend
-    {
-        public string variableNameCN;
-        public string cutoff;
-        public string srcblend;
-        public string dstblend;
-        public string srcblendalpha;
-        public string dstblendalpha;
-        public string specularAlphaMode;
     }
 
     /// <summary>属性类型，决定 Inspector 上使用哪种绘制方式。</summary>
@@ -142,13 +98,4 @@ namespace MarkupShaderGUI
         group_keywords = 3,
     }
 
-    /// <summary>向量分量的取值类型。</summary>
-    public enum VectorValueType
-    {
-        Int = 0,
-        Float = 1,
-        Range = 2,
-        Vector2 = 3,
-        Vector3 = 4
-    }
 }

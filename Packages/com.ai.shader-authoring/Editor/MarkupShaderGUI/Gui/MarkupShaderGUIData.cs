@@ -24,8 +24,6 @@ namespace MarkupShaderGUI
 
         public float WarningTimer => Parse.WarningTimer;
 
-        public ShaderBlend Blend => Parse.Blend;
-
         public List<ShaderGroupProperty> Groups => Parse.Groups;
 
         /// <summary>属性名 → MaterialProperty 的映射，每次绘制前重建。</summary>

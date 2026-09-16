@@ -137,8 +137,12 @@ namespace MarkupShaderGUI
         {
             foreach (MaterialProperty property in data.Properties.Values)
             {
-                if (property == null || handled.Contains(property.name))
+                if (property == null ||
+                    handled.Contains(property.name) ||
+                    (property.flags & MaterialProperty.PropFlags.HideInInspector) != 0)
+                {
                     continue;
+                }
 
                 editor.ShaderProperty(property, property.displayName);
             }

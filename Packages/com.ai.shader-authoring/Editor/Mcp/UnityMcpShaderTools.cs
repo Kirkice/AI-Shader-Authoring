@@ -6,6 +6,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using UnityEditor;
 #if UNITY_6000_0_OR_NEWER
@@ -47,8 +48,6 @@ namespace UnityMcp.Editor
                 case "refresh_and_compile_assets": return StartCompile(args);
                 case "ensure_validation_scene": return StartValidationScene(args);
                 case "capture_validation": return StartCapture(args);
-                case "create_shader_checkpoint": return StartCheckpoint(args);
-                case "restore_shader_checkpoint": return RestoreCheckpoint(args);
                 case "get_console_diagnostics": return GetConsoleDiagnostics(args);
                 default: throw new ArgumentOutOfRangeException(nameof(toolName), toolName, "Unsupported structured Unity MCP tool.");
             }
@@ -83,43 +82,106 @@ namespace UnityMcp.Editor
 
         private static object QueryKnowledgeBase(JsonElement args)
         {
-            var status = GetKnowledgeBaseStatus(args);
-            var version = GetString(args, "knowledgeBaseVersion");
+            var version = ResolveKnowledgeBaseVersion(args);
             if (string.IsNullOrEmpty(version))
-            {
-                var currentPath = KnowledgeRoot + "current.json";
-                if (File.Exists(currentPath))
-                {
-#if UNITY_6000_0_OR_NEWER
-                    using var currentDocument = JsonDocument.Parse(File.ReadAllText(currentPath));
-                    version = GetString(currentDocument.RootElement, "knowledgeBaseVersion") ?? GetString(currentDocument.RootElement, "version");
-#else
-                    using (var currentDocument = JsonDocument.Parse(File.ReadAllText(currentPath)))
-                    {
-                        version = GetString(currentDocument.RootElement, "knowledgeBaseVersion") ?? GetString(currentDocument.RootElement, "version");
-                    }
-#endif
-                }
-            }
-
-            if (string.IsNullOrEmpty(version))
-            {
                 return new { status = "missing", results = Array.Empty<object>(), warning = "No persisted Shader Knowledge Base is available." };
-            }
 
             var root = KnowledgeRoot + "versions/" + version + "/";
-            var corpusPath = root + "shader-corpus.json";
-            var functionPath = root + "function-cards.json";
+            if (!Directory.Exists(root))
+                return new { status = "missing", knowledgeBaseVersion = version, results = Array.Empty<object>(), warning = "The requested Shader Knowledge Base version does not exist." };
+
+            var query = GetString(args, "query") ?? string.Empty;
+            var terms = TokenizeQuery(query).Concat(GetStringArray(args, "tags")).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            var requestedTypes = GetStringArray(args, "types");
+            var limit = GetInt(args, "limit", 10, 1, 50);
+            var partitions = new[]
+            {
+                new KnowledgePartition("shaderExample", root + "shader-corpus.json"),
+                new KnowledgePartition("functionCard", root + "function-cards.json"),
+                new KnowledgePartition("convention", root + "project-conventions.json"),
+                new KnowledgePartition("capability", root + "capability-catalog.json")
+            };
+            var matches = new List<KnowledgeQueryMatch>();
+            foreach (var partition in partitions)
+            {
+                if (requestedTypes.Length > 0 && !requestedTypes.Any(type => string.Equals(type, partition.type, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+                matches.AddRange(QueryKnowledgePartition(partition, terms));
+            }
+
+            var results = matches
+                .OrderByDescending(match => match.score)
+                .ThenBy(match => match.type, StringComparer.Ordinal)
+                .ThenBy(match => match.payload, StringComparer.Ordinal)
+                .Take(limit)
+                .Select(match => (object)new { type = match.type, score = match.score, item = match.payload })
+                .ToArray();
             return new
             {
+                status = "ok",
                 knowledgeBaseVersion = version,
-                retrievalStatus = File.Exists(corpusPath) || File.Exists(functionPath) ? "limited" : "absent",
-                matchedShaderExamples = ReadJsonArray(corpusPath),
-                matchedFunctionCards = ReadJsonArray(functionPath),
-                matchedConventions = ReadJsonArray(root + "project-conventions.json"),
-                capabilityEvidence = ReadJsonArray(root + "capability-catalog.json"),
-                missingCoverage = Array.Empty<string>()
+                query,
+                tags = GetStringArray(args, "tags"),
+                types = requestedTypes,
+                limit,
+                resultCount = results.Length,
+                results,
+                missingCoverage = results.Length == 0 ? new[] { "No indexed entry matched the requested query, tags, or types." } : Array.Empty<string>()
             };
+        }
+
+        private static string ResolveKnowledgeBaseVersion(JsonElement args)
+        {
+            var requested = GetString(args, "knowledgeBaseVersion");
+            if (!string.IsNullOrEmpty(requested) && !string.Equals(requested, "current", StringComparison.OrdinalIgnoreCase)) return requested;
+            var currentPath = KnowledgeRoot + "current.json";
+            if (!File.Exists(currentPath)) return null;
+            try
+            {
+                using (var document = JsonDocument.Parse(File.ReadAllText(currentPath)))
+                    return GetString(document.RootElement, "knowledgeBaseVersion") ?? GetString(document.RootElement, "version");
+            }
+            catch { return null; }
+        }
+
+        private static IEnumerable<string> TokenizeQuery(string query)
+        {
+            if (string.IsNullOrWhiteSpace(query)) return Array.Empty<string>();
+            return query.Split(new[] { ' ', '\t', '\r', '\n', ',', '，', ';', '；', '|', '/' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(term => term.Trim())
+                .Where(term => term.Length > 0);
+        }
+
+        private static IEnumerable<KnowledgeQueryMatch> QueryKnowledgePartition(KnowledgePartition partition, string[] terms)
+        {
+            if (!File.Exists(partition.path)) return Array.Empty<KnowledgeQueryMatch>();
+            try
+            {
+                using (var document = JsonDocument.Parse(File.ReadAllText(partition.path)))
+                {
+                    if (document.RootElement.ValueKind != JsonValueKind.Array) return Array.Empty<KnowledgeQueryMatch>();
+                    return document.RootElement.EnumerateArray()
+                        .Select(element => element.GetRawText())
+                        .Select(payload => new KnowledgeQueryMatch { type = partition.type, payload = payload, score = ScoreKnowledgeEntry(payload, terms) })
+                        .Where(match => terms.Length == 0 || match.score > 0)
+                        .ToArray();
+                }
+            }
+            catch
+            {
+                return Array.Empty<KnowledgeQueryMatch>();
+            }
+        }
+
+        private static int ScoreKnowledgeEntry(string payload, string[] terms)
+        {
+            if (terms.Length == 0) return 1;
+            var score = 0;
+            foreach (var term in terms)
+            {
+                if (payload.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0) score++;
+            }
+            return score;
         }
 
         private static object GetAssetRevision(JsonElement args)
@@ -181,6 +243,16 @@ namespace UnityMcp.Editor
         private static object RunJob(JsonElement args)
         {
             var type = RequireString(args, "jobType");
+            switch (type)
+            {
+                case "build_shader_knowledge_base":
+                case "refresh_and_compile_assets":
+                case "ensure_validation_scene":
+                case "capture_validation":
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(type), type, "Unsupported structured Unity job type.");
+            }
             var jobArgs = args.TryGetProperty("args", out var value) ? value : default;
             return CreateJob(type, jobArgs, args);
         }
@@ -189,7 +261,6 @@ namespace UnityMcp.Editor
         private static object StartCompile(JsonElement args) => CreateJob("refresh_and_compile_assets", args, args);
         private static object StartValidationScene(JsonElement args) => CreateJob("ensure_validation_scene", args, args);
         private static object StartCapture(JsonElement args) => CreateJob("capture_validation", args, args);
-        private static object StartCheckpoint(JsonElement args) => CreateJob("create_shader_checkpoint", args, args);
 
         /// <summary>
         /// Reads Unity console diagnostics, optionally scoped to specific assets, and augments Shader
@@ -494,7 +565,7 @@ namespace UnityMcp.Editor
         private static object CreateJob(string type, JsonElement jobArgs, JsonElement context)
         {
             var id = Guid.NewGuid().ToString("N");
-            var record = new JobRecord { jobId = id, jobType = type, status = "queued", createdAtUtc = DateTime.UtcNow.ToString("o"), argsJson = jobArgs.ValueKind == JsonValueKind.Undefined ? "{}" : jobArgs.GetRawText(), contextJson = context.ValueKind == JsonValueKind.Undefined ? "{}" : context.GetRawText() };
+            var record = new JobRecord { jobId = id, jobType = type, status = "queued", createdAtUtc = DateTime.UtcNow.ToString("o"), argsJson = jobArgs.ValueKind == JsonValueKind.Undefined ? "{}" : jobArgs.GetRawText(), contextJson = context.ValueKind == JsonValueKind.Undefined ? "{}" : context.GetRawText(), cancellation = new CancellationTokenSource() };
             Jobs[id] = record;
             ExecuteJob(record);
             return new { jobId = id, status = record.status, acceptedJobType = type, acceptedAtUtc = record.createdAtUtc, completedAtUtc = record.completedAtUtc, logCursor = record.createdAtUtc };
@@ -515,12 +586,16 @@ namespace UnityMcp.Editor
                         case "refresh_and_compile_assets": return RunCompileAsync(args.RootElement, record).ContinueWith(task => CompleteJob(record, task));
                         case "ensure_validation_scene": result = EnsureValidationScene(args.RootElement, record); break;
                         case "capture_validation": result = CaptureValidation(args.RootElement, record); break;
-                        case "create_shader_checkpoint": result = CreateCheckpoint(args.RootElement, record); break;
                         default: throw new InvalidOperationException("Unsupported job type: " + record.jobType);
                     }
+                    ThrowIfJobCancellationRequested(record);
                     record.resultJson = JsonSerializer.Serialize(result, JsonOptions);
                     record.status = "succeeded";
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                record.status = "cancelled";
             }
             catch (Exception exception)
             {
@@ -536,8 +611,19 @@ namespace UnityMcp.Editor
         {
             if (task.Status == TaskStatus.RanToCompletion)
             {
-                record.resultJson = JsonSerializer.Serialize(task.Result, JsonOptions);
-                record.status = "succeeded";
+                if (record.cancellation.IsCancellationRequested)
+                {
+                    record.status = "cancelled";
+                }
+                else
+                {
+                    record.resultJson = JsonSerializer.Serialize(task.Result, JsonOptions);
+                    record.status = "succeeded";
+                }
+            }
+            else if (task.IsCanceled || task.Exception?.GetBaseException() is OperationCanceledException)
+            {
+                record.status = "cancelled";
             }
             else
             {
@@ -553,7 +639,8 @@ namespace UnityMcp.Editor
         {
             var id = RequireString(args, "jobId");
             if (!Jobs.TryGetValue(id, out var record)) throw new ArgumentException("Unknown jobId: " + id);
-            return new { record.jobId, status = record.status, phase = record.jobType, progress = record.status == "succeeded" ? 1f : record.status == "running" ? 0.5f : 0f, record.createdAtUtc, record.completedAtUtc, result = ParseStoredJson(record.resultJson), error = record.error, artifacts = record.artifacts.ToArray() };
+            var progress = record.status == "succeeded" ? 1f : record.status == "running" || record.status == "cancelling" ? 0.5f : 0f;
+            return new { record.jobId, status = record.status, phase = record.jobType, progress, record.createdAtUtc, record.completedAtUtc, result = ParseStoredJson(record.resultJson), error = record.error, artifacts = record.artifacts.ToArray() };
         }
 
         private static object CancelJob(JsonElement args)
@@ -561,8 +648,32 @@ namespace UnityMcp.Editor
             var id = RequireString(args, "jobId");
             if (!Jobs.TryGetValue(id, out var record)) throw new ArgumentException("Unknown jobId: " + id);
             var previous = record.status;
-            if (record.status == "queued") record.status = "cancelled";
-            return new { jobId = id, previousStatus = previous, status = record.status == "cancelled" ? "cancelled" : "not_cancellable", preservedArtifacts = record.artifacts.ToArray() };
+            var cancellationAccepted = false;
+            if (record.status == "queued")
+            {
+                record.cancellation.Cancel();
+                record.status = "cancelled";
+                cancellationAccepted = true;
+            }
+            else if (record.status == "running" && string.Equals(record.jobType, "refresh_and_compile_assets", StringComparison.Ordinal))
+            {
+                record.cancellation.Cancel();
+                record.status = "cancelling";
+                cancellationAccepted = true;
+            }
+            return new
+            {
+                jobId = id,
+                previousStatus = previous,
+                status = record.status,
+                cancellationAccepted,
+                preservedArtifacts = record.artifacts.ToArray()
+            };
+        }
+
+        private static void ThrowIfJobCancellationRequested(JobRecord record)
+        {
+            if (record != null) record.cancellation.Token.ThrowIfCancellationRequested();
         }
 
         private static object BuildKnowledgeBase(JsonElement args, JobRecord record)
@@ -1117,19 +1228,28 @@ namespace UnityMcp.Editor
         private static Task<object> RunCompileAsync(JsonElement args, JobRecord record)
         {
             var paths = GetStringArray(args, "assetPaths");
-            foreach (var path in paths) { RequireReadPath(path); AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate); }
+            ThrowIfJobCancellationRequested(record);
+            foreach (var path in paths)
+            {
+                ThrowIfJobCancellationRequested(record);
+                RequireReadPath(path);
+                AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+            }
+            ThrowIfJobCancellationRequested(record);
             AssetDatabase.Refresh();
             var completion = new TaskCompletionSource<object>();
             EditorApplication.delayCall += () =>
             {
                 try
                 {
+                    ThrowIfJobCancellationRequested(record);
                     var compiledAssets = paths.Select(path => new { path, observedRevision = File.Exists(path) ? Revision(path) : "absent", importStatus = "imported" }).ToArray();
                     var logs = ReadConsoleLogEntries();
                     var diagnostics = new List<DiagnosticEntry>();
                     var scannedShaders = new List<object>();
                     foreach (var path in paths)
                     {
+                        ThrowIfJobCancellationRequested(record);
                         diagnostics.AddRange(ExtractDiagnostics(logs, path, true));
                         // Live compiler findings are part of the compile job verdict, not just console noise.
                         if (!path.EndsWith(".shader", StringComparison.OrdinalIgnoreCase)) continue;
@@ -1317,16 +1437,6 @@ namespace UnityMcp.Editor
             };
         }
 
-        private static object CreateCheckpoint(JsonElement args, JobRecord record)
-        {
-            var id = Guid.NewGuid().ToString("N");
-            var path = WriteRunArtifact(args, "checkpoints/" + id + ".json", args.GetRawText());
-            record.artifacts.Add(path);
-            return new { checkpointId = id, manifest = new { path, contentHash = Hash(File.ReadAllText(path)) }, recoverable = false, restoreConstraints = new[] { "Restore is only available for checkpoints that include generated asset snapshots." } };
-        }
-
-        private static object RestoreCheckpoint(JsonElement args) => new { status = "blocked", reason = "Checkpoint restoration requires explicit generated-asset snapshots and is not available for this checkpoint." };
-
         private static object[] ReadJsonArray(string path)
         {
             if (!File.Exists(path)) return Array.Empty<object>();
@@ -1386,7 +1496,21 @@ namespace UnityMcp.Editor
             }
         }
 
-        [Serializable] private sealed class JobRecord { public string jobId; public string jobType; public string status; public string createdAtUtc; public string completedAtUtc; public string argsJson; public string contextJson; public string resultJson; public string error; public readonly List<string> artifacts = new List<string>(); }
+        [Serializable] private sealed class JobRecord { public string jobId; public string jobType; public string status; public string createdAtUtc; public string completedAtUtc; public string argsJson; public string contextJson; public string resultJson; public string error; [NonSerialized] public CancellationTokenSource cancellation; public readonly List<string> artifacts = new List<string>(); }
+
+        private sealed class KnowledgePartition
+        {
+            public readonly string type;
+            public readonly string path;
+            public KnowledgePartition(string type, string path) { this.type = type; this.path = path; }
+        }
+
+        private sealed class KnowledgeQueryMatch
+        {
+            public string type;
+            public string payload;
+            public int score;
+        }
 
         /// <summary>In-memory validation capture state. It is intentionally discarded by a Unity domain reload.</summary>
         private sealed class ValidationSessionRecord

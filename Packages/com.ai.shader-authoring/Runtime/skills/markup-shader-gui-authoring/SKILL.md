@@ -23,7 +23,6 @@ description: 为 Unity Shader 的 Properties 块自动分析、设计、生成�
 
 - 修改 Shader 的光照模型、Pass、HLSL、混合模式、关键字矩阵或贴图采样逻辑。
 - 新增未在 Shader 中声明的材质属性。
-- 实现当前 GUI 尚未实际绘制的 `Blend` 或 `VectorSplit` 控件。
 - 修改 `Assets/MarkupShaderGUI` 的解析器或 GUI 实现；此类需求应转为 GUI 功能开发任务。
 
 ## 权威实现依据
@@ -129,7 +128,7 @@ _Metallic("金属度", Range(0, 1)) = 0
 - 中文名用于 Inspector 标题；英文标识用于折叠状态和组复制/粘贴键。
 - `EnglishIdentifier` 使用 PascalCase，仅包含字母和数字；同一 Shader 内必须唯一，且**不能再包含 `_`**。当前解析器按 `_` 切分并只读取第二段。
 - 每个 `GroupStart` 必须由一个 `GroupEnd` 结束；禁止嵌套组。
-- `Label`、`Toggle`、`Enum`、`VectorSplit` 必须处于组内；`Blend`、`Warning` 与 `FeatureDes` 可以位于组外。
+- `Label`、`Toggle`、`Enum` 必须处于组内；`Warning` 与 `FeatureDes` 可以位于组外。
 
 #### 3.3 组内小标题
 
@@ -228,17 +227,6 @@ _SurfaceMode("表面模式", Float) = 0
 - 可选扩展：`// # Warning:文本:颜色名:秒数`。
 - 当前 GUI 仅显示文本；颜色名和秒数虽会解析，但尚未影响绘制。
 
-## 当前不应由 AI 生成的标记
-
-以下语法可被解析器记录，但当前 GUI 没有对应控件。除非用户明确要求为未来功能保留元数据，否则禁止自动生成：
-
-```shader
-// # Blend:...
-// # VectorSplit:...
-```
-
-理由：生成它们不会改善当前 Inspector，且可能让用户误以为可用。
-
 ## CustomEditor 规则
 
 最终 Shader 必须有且仅有一条以下声明：
@@ -295,7 +283,6 @@ Shader "Example/Lit Fresnel"
 - [ ] 所有 `Uniform` / `GroupUniform` / `Enum` 指向真实 Properties 属性。
 - [ ] 所有 `KeyWords` / `GroupKeyWords` 指向真实 Shader keyword。
 - [ ] 没有 `[Toggle]`、`[ToggleOff]`、`[KeywordEnum]` 原生属性标记。
-- [ ] 不自动插入 `Blend` 或 `VectorSplit`。
 - [ ] 最终只存在一条正确的 `CustomEditor` 声明。
 
 ## Unity 验证流程

@@ -34,14 +34,6 @@ namespace MarkupShaderGUI
         public static readonly Regex Enum =
             new Regex(@"//\s*#\s*Enum_(.+)", RegexOptions.Compiled);
 
-        /// <summary>渲染模式：<c>// # Blend:默认:...</c></summary>
-        public static readonly Regex Blend =
-            new Regex(@"//\s*#\s*Blend:(.+)", RegexOptions.Compiled);
-
-        /// <summary>向量拆分（已解析，当前 GUI 尚未渲染）：<c>// # VectorSplit:...</c></summary>
-        public static readonly Regex VectorSplit =
-            new Regex(@"//\s*#\s*VectorSplit:(.+)", RegexOptions.Compiled);
-
         /// <summary>警告：<c>// # Warning:提示文本:单色名:秒数</c></summary>
         public static readonly Regex Warning =
             new Regex(@"//\s*#\s*Warning:(.+)", RegexOptions.Compiled);

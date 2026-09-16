@@ -43,27 +43,27 @@ namespace MarkupShaderGUI
                 var entry = new SerializedPropertyEntry
                 {
                     uniform = prop.name,
-                    type = (int)prop.propertyType
+                    type = (int)prop.type
                 };
 
-                switch (prop.propertyType)
+                switch (prop.type)
                 {
-                    case UnityEngine.Rendering.ShaderPropertyType.Float:
-                    case UnityEngine.Rendering.ShaderPropertyType.Range:
+                    case MaterialProperty.PropType.Float:
+                    case MaterialProperty.PropType.Range:
                         entry.floatValue = material.GetFloat(prop.name);
                         break;
 
-                    case UnityEngine.Rendering.ShaderPropertyType.Color:
+                    case MaterialProperty.PropType.Color:
                         Color color = material.GetColor(prop.name);
                         entry.colorValue = new float[] { color.r, color.g, color.b, color.a };
                         break;
 
-                    case UnityEngine.Rendering.ShaderPropertyType.Vector:
+                    case MaterialProperty.PropType.Vector:
                         Vector4 vector = material.GetVector(prop.name);
                         entry.vectorValue = new float[] { vector.x, vector.y, vector.z, vector.w };
                         break;
 
-                    case UnityEngine.Rendering.ShaderPropertyType.Texture:
+                    case MaterialProperty.PropType.Texture:
                         Texture texture = material.GetTexture(prop.name);
                         if (texture != null)
                         {
@@ -159,14 +159,16 @@ namespace MarkupShaderGUI
                     continue;
                 }
 
-                switch ((UnityEngine.Rendering.ShaderPropertyType)entry.type)
+                // type 在复制时保存的是 MaterialProperty.PropType 的数值，必须用同一枚举还原。
+                // ShaderPropertyType 的枚举顺序不同，混用会将颜色、向量等属性写入错误的 setter。
+                switch ((MaterialProperty.PropType)entry.type)
                 {
-                    case UnityEngine.Rendering.ShaderPropertyType.Float:
-                    case UnityEngine.Rendering.ShaderPropertyType.Range:
+                    case MaterialProperty.PropType.Float:
+                    case MaterialProperty.PropType.Range:
                         material.SetFloat(entry.uniform, entry.floatValue);
                         break;
 
-                    case UnityEngine.Rendering.ShaderPropertyType.Color:
+                    case MaterialProperty.PropType.Color:
                         if (entry.colorValue != null && entry.colorValue.Length >= 4)
                         {
                             material.SetColor(entry.uniform, new Color(
@@ -177,7 +179,7 @@ namespace MarkupShaderGUI
                         }
                         break;
 
-                    case UnityEngine.Rendering.ShaderPropertyType.Vector:
+                    case MaterialProperty.PropType.Vector:
                         if (entry.vectorValue != null && entry.vectorValue.Length >= 4)
                         {
                             material.SetVector(entry.uniform, new Vector4(
@@ -188,7 +190,7 @@ namespace MarkupShaderGUI
                         }
                         break;
 
-                    case UnityEngine.Rendering.ShaderPropertyType.Texture:
+                    case MaterialProperty.PropType.Texture:
                         Texture texture = null;
                         if (!string.IsNullOrEmpty(entry.textureGuid))
                         {
