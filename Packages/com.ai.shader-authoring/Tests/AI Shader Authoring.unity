@@ -262,12 +262,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f8fb282b71d1a54489d684b3c3cacd6d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  heroModel: {fileID: 0}
-  _renderlayer: 0
-  _albedoMode: 0
-  _postprocessSwitch: 1
-  uiType: 0
-  isEnablePP: 1
 --- !u!81 &1046166128
 AudioListener:
   m_ObjectHideFlags: 0
@@ -353,7 +347,7 @@ Light:
   serializedVersion: 13
   m_Type: 1
   m_Color: {r: 1, g: 1, b: 1, a: 1}
-  m_Intensity: 20
+  m_Intensity: 1
   m_Range: 10
   m_SpotAngle: 55
   m_InnerSpotAngle: 21.80208
@@ -419,11 +413,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7fa384ed1e4bb7141a7e4c16ee8c3801, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  CurrentLightType: 101
-  SpotAngle: 179
-  InnerSpotAngle: 26
-  Range: 36
-  showGizmos: 1
 --- !u!1 &4623124250301207707
 GameObject:
   m_ObjectHideFlags: 0
