@@ -852,19 +852,57 @@ MarkupShaderGUIAuthoringRequest
 4. GUI 标记失败不会被视觉截图掩盖：若目标 Shader 的编译或解析诊断存在 Error，本轮进入 `REVISE`；若仅为用户选择的 Inspector 策略冲突，则进入 `BLOCKED` 或保留默认 Inspector，并明确报告。
 5. 在最终验证中，除渲染结果外，还必须确认 Inspector 分组、属性类型、组级开关、关键字开关及 Render Queue 字段的行为与委派计划一致。
 
-## Step 8：验证
+## Step 7.75：委派非阻断性能分析与预警
+
+性能验收委派给 [`shader-performance-acceptance`](../shader-performance-acceptance/SKILL.md)。委派发生在 Step 7 的编译/Console 门禁通过之后、Step 8 的固定场景截图和大模型视觉验收之前。
+
+### 委派输入与边界
+
+1. 主 Skill 将本轮 `shaderPath`、最终 revision、`runId`、当前材质关键字和用户目标传递给子 Skill。子 Skill 必须先调用 `export_compiled_gles_variants`，由 Unity 以 GLES3x 导出真实顶点/片元 GLSL，再将结果传入 `analyze_shader_performance`；禁止把 ShaderLab/HLSL 当作 Mali 输入。仅诊断或回归测试可以显式传入外部 GLES 变体。
+2. 首次委派时，子 Skill 负责询问并记录性能策略；主 Skill 将结果写入 `ShaderCodePlan.performancePolicy`。同一视觉修订轮复用策略，只有目标平台或用户目标改变时才重新询问。
+3. 用户确认的 `malioc` 可执行文件路径作为 `maliCompilerPath` 显式传递；主 Skill 和子 Skill 都不得猜测路径或扫描磁盘寻找安装目录。
+4. 子 Skill 仅产出性能报告、Inspector 预警和优化建议，不得修改 Shader、材质、场景、`MaterialIntent` 或视觉验收结论。
+
+### 返回处理
+
+1. 主 Skill 保存子 Skill 返回的策略、实际预算、revision、静态指标、Mali 状态、评级、违规列表、摘要路径和运行归档路径。
+2. 评级只能是 `信息`、`注意`、`预警`、`高风险` 或 `未评级`。无论 Mali 缺失、变体缺失、Mali 分析失败或评级为何，均立即进入 Step 8。
+3. 最终 `PASS` 必须携带性能摘要，但由编译、工程契约与大模型视觉结论决定；性能评级不得否决视觉验收。
+4. 若性能风险需要修复，主 Skill 将其作为后续独立 Shader 优化循环的输入；优化后必须重新执行 Step 7、重新委派本子 Skill，再进入 Step 8。
+
+## Step 8：固定测试场景验证与大模型验收循环
+
+本 Skill 的渲染验收必须使用项目内固定场景 [`Tests/AI Shader Authoring.unity`](../../../Tests/AI%20Shader%20Authoring.unity)，不得依据当前 Editor 打开的场景、临时创建的场景或任意用户场景作出 `PASS` 判定。验收目标固定为该场景中名称精确为 `AIShader_Sphere` 的 `GameObject`；该对象可以是根节点，也可以位于任意层级的子节点。
 
 ### 固定验证顺序
 
-1. 静态检查：计划白名单、锚点、属性、渲染状态、禁止特性，以及 `ReferenceShaderParityManifest`：工程关键字矩阵、Properties、纹理通道语义、工作流分支、`CBUFFER`、采样/`SurfaceData` 接线、`Attributes`/`Varyings`、Pass 是否完整继承；任一未继承项必须有用户明确批准的偏差理由，否则直接 `REVISE`。
-2. Unity 刷新与 Shader 编译（`refresh_and_compile_assets` → `get_unity_job`）。
-3. Console 读取（`get_console_diagnostics`）：确认无新增 Error；有错则回到 Step 7 修复循环。
-4. 当 `shaderGuiAuthoring.required = true` 时，确认 Markup 注释的解析与 Inspector 行为符合委派计划；失败则回到 Step 7.5 修复。
-5. **验证场景预检**：在调用 `ensure_validation_scene` 前，必须确认目标 `scenePath`、`cameraPath`、`objectPath` 与 `materialPath` 均存在；目标 Renderer 与相机必须属于将被打开的同一场景，且相机朝向、FOV、裁剪面与目标包围盒能形成可辨认的目标轮廓。不得以当前编辑器已打开场景的 Hierarchy 代替对磁盘验证场景的核验。
-6. **基线与响应验证**：先捕获不替换目标材质的参考图，再至少捕获两张具有显著参数差异的目标材质图（例如溶解 `0` / `0.6`，或 Emission `0` / 高亮）。必须人工复核目标几何确实位于画面内，并确认目标材质变化使 PNG `contentHash` 或目标区域像素发生变化；否则立即 `REVISE`，先修复相机/场景/目标绑定，不得继续做效果判断。
-7. 输出当前阶段的目标图、参考图、Debug 图；Alpha Clip 或透明需求还必须输出 Alpha 灰度图与裁剪遮罩图。
-8. 运行当前阶段所需的参数扫描，并记录每个扫描点的材质 revision、参数值、截图 hash 与人工结论。
-9. 保存 `PASS`、`REVISE` 或 `BLOCKED` 及其证据（必须包含第 2、3 步的诊断结果）。
+1. **静态与编译门禁**：静态检查计划白名单、锚点、属性、渲染状态、禁止特性以及 `ReferenceShaderParityManifest`；再执行 `refresh_and_compile_assets` → `get_unity_job`，并调用 `get_console_diagnostics`。任一 Shader Error 或未获批准的基线契约偏差均直接进入 Step 7 修复循环，禁止截图和视觉判断。
+2. **打开固定测试场景并定位目标**：通过 Unity MCP 打开 [`Tests/AI Shader Authoring.unity`](../../../Tests/AI%20Shader%20Authoring.unity)，在该场景的全部根节点及其递归子节点中查找唯一的 `AIShader_Sphere`。必须确认它拥有 `Renderer`；未找到、找到多个同名对象、或不存在 `Renderer` 时，返回 `BLOCKED`，并报告搜索到的层级路径，不得猜测目标。
+3. **定位同场景相机**：在同一已打开场景中定位用于验证的启用 `Camera`。相机选择必须记录其层级路径；若存在多个候选相机，优先使用带 `MainCamera` 标签的启用相机，否则返回 `BLOCKED` 要求人工指定。不得使用其他已加载场景中的相机。
+4. **替换目标材质的 Shader**：读取 `AIShader_Sphere` 当前 Renderer 所使用的材质；仅创建临时运行时材质副本，将该副本的 Shader 替换为本轮新生成的 AI Shader，并把副本临时赋给 `AIShader_Sphere`。必须保留原始材质和材质槽数组，在截图完成后无条件恢复；不得保存场景或覆盖原始材质资产。若新 Shader 无法加载、材质副本无法创建、或目标 Renderer 不接受替换，进入 `REVISE`。
+5. **截取相机画面**：使用第 3 步相机对替换后的 `AIShader_Sphere` 离屏渲染并生成 PNG。截图工件、Shader revision、原材质路径、临时材质属性、目标层级路径、相机层级路径与时间戳必须一并保存到本轮运行工件中。对于透明或 Alpha Clip 需求，同时输出 Alpha 灰度图和裁剪遮罩 Debug 图。
+6. **大模型视觉验收**：将第 5 步截图作为图像输入交给大模型，并同时提供本轮 `MaterialIntent` 中的可见验收目标、激活效果、关键参数值、Shader revision 和编译/Console 结果。大模型必须逐项输出：`通过`、`不通过` 或 `无法判断`，以及每项对应的可观察证据；禁止仅以“截图非空”或像素阈值判定功能生效。
+7. **验收决策与闭环**：
+   - 全部目标为 `通过`：记录大模型验收结论、截图和编译证据，进入 `PASS`。
+   - 任一目标为 `不通过`：大模型必须给出仅针对失败现象的修改方案；主 Skill 将方案映射到 `MaterialIntent`、语义图和 `ShaderCodePlan` 的受影响节点，在白名单内修改 Shader，然后从本节第 1 步重新执行。
+   - 任一关键目标为 `无法判断`：返回 `REVISE`，优先修复相机、目标可见性、材质替换或截图信息不足；不得将其解释为功能通过或直接修改视觉算法。
+8. **迭代上限与证据保留**：视觉验收修复最多进行 `3` 轮。每轮均保存修改方案、修改前后 Shader revision、编译诊断、截图与大模型结论；三轮后仍未全部通过则返回 `BLOCKED`，说明仍失败的验收项及最小人工决策。
+
+### 固定验证流程图
+
+```text
+编译和 Console 门禁通过
+  → 打开 Tests/AI Shader Authoring.unity
+  → 递归查找唯一 AIShader_Sphere
+  → 定位同场景验证相机
+  → 复制目标材质并临时替换为新 AI Shader
+  → 相机截图并保存证据
+  → 大模型按 MaterialIntent 逐项验收
+       ├─ 全部通过 → PASS
+       ├─ 不通过 → 大模型修改方案 → 修改 Shader → 重新编译并截图
+       └─ 无法判断 → 修复验证条件 → 重新截图
+  → 恢复 AIShader_Sphere 原始材质且不保存场景
+```
 
 ### PBR 阶段顺序
 
@@ -901,23 +939,26 @@ Stage 10 法线、Alpha Clip、透明等首期扩展
 
 ### 验证证据的硬性防线
 
-像素统计只能证明「渲染结果非空」，不能证明「渲染了目标」。`ensure_validation_scene` 仅验证资产路径、场景路径和层级路径可读取，不等同于目标已进入相机视锥或材质替换已对画面生效；因此必须执行固定验证顺序中的预检、参考图和差异化材质捕获。出现以下任一情况时**不得**判定 `PASS`，必须记为 `REVISE` 并在证据中说明：
+截图像素统计或 PNG `contentHash` 只能作为辅助证据，不能单独证明指定功能生效。以下任一情况均不得判定 `PASS`，必须进入 `REVISE` 或 `BLOCKED` 并保存原因：
 
-1. **材质替换无效**：两次 `capture_validation` 的 PNG `contentHash` 完全一致。材质 revision 变了而像素不变，说明画面对被替换材质零响应，目标物体不在画面中。
-2. **背景基线不可靠**：统计基线取自 `pixels[0]`（左上角）时，渐变天空盒等非纯色背景会让 `nonBackgroundRatio` 量到背景自身的差异而非目标轮廓（可高达 `0.9+`）。此时必须改用固定背景色或真实背景采样，并人工复核截图。
-3. **目标不可辨认**：截图中无法辨认目标几何，或目标轮廓、占屏比例与相机投影参数（位置、朝向、FOV、近远裁剪）不一致。
-4. **场景与相机不一致**：目标所在场景若以叠加方式打开，渲染必须使用该场景内的相机，且相机与目标同场景；活动场景与验证场景不同时，`Render` 可能渲染的不是验证目标。
+1. 固定测试场景 [`Tests/AI Shader Authoring.unity`](../../../Tests/AI%20Shader%20Authoring.unity) 未被实际打开，或未在该场景内定位到唯一 `AIShader_Sphere`。
+2. 用于截图的相机不属于固定测试场景，或目标没有 `Renderer`，或没有可恢复的原始材质记录。
+3. 临时材质未实际绑定新 AI Shader，或截图前后未能证明本轮截图来自本轮的 Shader revision。
+4. 截图中无法由大模型辨认 `AIShader_Sphere`，或关键验收目标被大模型标为 `无法判断`。
+5. 任一用户要求的可见功能被大模型标为 `不通过`，即使平均亮度、非背景像素比例或截图哈希看似正常。
+6. 编译或 Console 存在 Error；视觉截图绝不能覆盖编译失败。
 
-第 1 条是首选判别手段：先比对哈希，再人工复核截图，最后才看阈值。
-截图不是唯一真值；当截图与数值证据冲突时，以人工复核截图为准。
+`contentHash` 可用于追踪工件和发现异常重复截图，但不是功能是否通过的主判据；最终视觉结论以携带验收目标和证据说明的大模型图像分析结果为准。
 
 ### 决策条件
 
 ```text
 PASS
-  当前阶段编译通过，静态检查通过，Console 无新增错误，验证证据满足明确验收标准，
-  且通过工程风格与属性工艺对齐检查（纪律 11-13、`ReferenceShaderParityManifest`）与验证证据硬性防线（截图哈希随材质变化）。
-  未对齐工程风格或参考属性工艺契约、注释非中文、或命中验证防线条目时，一律不得判定 PASS。
+  当前阶段编译通过，静态检查通过，Console 无新增错误，且已在固定场景
+  `Tests/AI Shader Authoring.unity` 内对唯一 `AIShader_Sphere` 临时替换新 AI Shader 后完成截图；
+  大模型针对全部可见验收目标均给出“通过”及可观察证据，同时通过工程风格与属性工艺对齐检查
+  （纪律 11-13、`ReferenceShaderParityManifest`）。未对齐工程风格或参考属性工艺契约、注释非中文、
+  未恢复原始材质、或命中验证防线条目时，一律不得判定 PASS。
 
 REVISE
   存在可定位的代码、数据、公式、参数、颜色空间或场景配置问题；保留现场，仅修正当前假设。
@@ -972,6 +1013,8 @@ BLOCKED
 - compile result:
 - console result:
 - shader GUI result:（分组/开关/枚举/CustomEditor、解析与 Inspector 验证结果）
+- performance policy:（用户选择、目标 GPU、阈值或仅采集）
+- performance result:（静态高开销模块、分析变体、Mali 状态、评级、报告路径；仅预警，不阻断视觉验收）
 - captures and debug channels:
 - capture hash comparison:（材质替换前后的 PNG contentHash 是否变化）
 - comparison result:

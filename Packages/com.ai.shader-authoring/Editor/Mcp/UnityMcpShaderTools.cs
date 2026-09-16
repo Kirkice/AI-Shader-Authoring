@@ -46,6 +46,8 @@ namespace UnityMcp.Editor
                 case "cancel_unity_job": return CancelJob(args);
                 case "build_shader_knowledge_base": return StartKnowledgeBaseBuild(args);
                 case "refresh_and_compile_assets": return StartCompile(args);
+                case "export_compiled_gles_variants": return StartCompiledGlesExport(args);
+                case "analyze_shader_performance": return StartPerformanceAnalysis(args);
                 case "ensure_validation_scene": return StartValidationScene(args);
                 case "capture_validation": return StartCapture(args);
                 case "get_console_diagnostics": return GetConsoleDiagnostics(args);
@@ -247,6 +249,8 @@ namespace UnityMcp.Editor
             {
                 case "build_shader_knowledge_base":
                 case "refresh_and_compile_assets":
+                case "export_compiled_gles_variants":
+                case "analyze_shader_performance":
                 case "ensure_validation_scene":
                 case "capture_validation":
                     break;
@@ -259,6 +263,8 @@ namespace UnityMcp.Editor
 
         private static object StartKnowledgeBaseBuild(JsonElement args) => CreateJob("build_shader_knowledge_base", args, args);
         private static object StartCompile(JsonElement args) => CreateJob("refresh_and_compile_assets", args, args);
+        private static object StartCompiledGlesExport(JsonElement args) => CreateJob("export_compiled_gles_variants", args, args);
+        private static object StartPerformanceAnalysis(JsonElement args) => CreateJob("analyze_shader_performance", args, args);
         private static object StartValidationScene(JsonElement args) => CreateJob("ensure_validation_scene", args, args);
         private static object StartCapture(JsonElement args) => CreateJob("capture_validation", args, args);
 
@@ -584,6 +590,8 @@ namespace UnityMcp.Editor
                     {
                         case "build_shader_knowledge_base": result = BuildKnowledgeBase(args.RootElement, record); break;
                         case "refresh_and_compile_assets": return RunCompileAsync(args.RootElement, record).ContinueWith(task => CompleteJob(record, task));
+                        case "export_compiled_gles_variants": result = CompiledGlesVariantExporter.Export(args.RootElement, record.cancellation.Token); break;
+                        case "analyze_shader_performance": result = ShaderPerformanceAnalyzer.Analyze(args.RootElement, record.cancellation.Token); break;
                         case "ensure_validation_scene": result = EnsureValidationScene(args.RootElement, record); break;
                         case "capture_validation": result = CaptureValidation(args.RootElement, record); break;
                         default: throw new InvalidOperationException("Unsupported job type: " + record.jobType);

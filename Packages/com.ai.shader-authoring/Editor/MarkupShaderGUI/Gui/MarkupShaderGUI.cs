@@ -39,6 +39,7 @@ namespace MarkupShaderGUI
 
             DrawFeatureDescription(data.FeatureDescription);
             DrawWarning(data.WarningText);
+            ShaderPerformanceSummaryPanel.Draw(material.shader);
             DrawGroups(materialEditor, material, data);
             materialEditor.RenderQueueField();
         }
@@ -139,7 +140,7 @@ namespace MarkupShaderGUI
             {
                 if (property == null ||
                     handled.Contains(property.name) ||
-                    (property.flags & MaterialProperty.PropFlags.HideInInspector) != 0)
+                    (property.propertyFlags & UnityEngine.Rendering.ShaderPropertyFlags.HideInInspector) != 0)
                 {
                     continue;
                 }

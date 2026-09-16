@@ -29,6 +29,7 @@ Unity MCP 位于 [`Editor/Mcp`](../Editor/Mcp/)，并由 [`UnityMcp.Editor.asmde
 | --- | --- | --- |
 | 诊断 | `get_editor_state`、`get_logs` | 返回编辑器状态与 Node 缓存的 Unity 日志。 |
 | 受控 Job | `run_unity_job`、`get_unity_job`、`cancel_unity_job` | 管理知识库、导入编译与验证 Job。 |
+| 性能 | `export_compiled_gles_variants`、`analyze_shader_performance` | 先经 Unity 编译导出 GLES3x 顶点/片元 GLSL，再执行静态与可选 Mali Offline Compiler 分析；结果仅预警。 |
 | 知识库 | `get_shader_knowledge_base_status`、`build_shader_knowledge_base`、`query_shader_knowledge_base` | 读取、构建和检索持久化项目 Shader 知识库。 |
 | 资产 | `inspect_shader_structure`、`get_asset_revision`、`write_generated_text_asset` | 读取 Shader 锚点/修订，或在生成目录执行 revision-protected 写入。 |
 | 验证 | `refresh_and_compile_assets`、`ensure_validation_scene`、`capture_validation` | 执行异步导入编译与验证证据采集。 |
@@ -41,6 +42,12 @@ Unity MCP 位于 [`Editor/Mcp`](../Editor/Mcp/)，并由 [`UnityMcp.Editor.asmde
 ### Job 取消
 
 `cancel_unity_job` 返回实际 Job 状态。当前 `refresh_and_compile_assets` 在导入/等待编译的阶段支持取消，状态会经历 `running` → `cancelling` → `cancelled`；其他同步执行的 Job 会返回当前状态而不会虚报已取消。所有 Job 的最终状态通过 `get_unity_job` 获取。
+
+### GLES 编译导出
+
+`export_compiled_gles_variants` 接收 `shaderPath`（仅 `Assets/*.shader`），通过 Unity 内部的已编译 Shader 导出路径请求 GLES3x 平台产物，并只在解析到包含 `#version` 与 `void main` 的真实 GLSL Stage 时返回 `compiledGlesVariants`。该 Job 失败时会返回诊断，绝不会把 ShaderLab/HLSL 伪装成 GLSL；调用方仍可继续静态性能分析和视觉验收。
+
+`analyze_shader_performance` 未显式传入 `compiledGlesVariants` 时，会自动执行同一导出步骤，然后才调用 `malioc`。外部 GLSL 输入仅供诊断与回归测试。
 
 结构化工具的完整请求/响应定义见 [`unity-mcp-p0-p1-contract.md`](../../../plans/unity-mcp-p0-p1-contract.md)。
 
