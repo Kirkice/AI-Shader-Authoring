@@ -1294,11 +1294,11 @@ namespace UnityMcp.Editor
             var scenePath = RequireString(profile, "scenePath");
             var cameraPath = RequireString(profile, "cameraPath");
             var targetPath = RequireString(target, "objectPath");
-            var materialPath = RequireString(target, "materialPath");
+            var shaderPath = GetString(target, "shaderPath") ?? RequireString(args, "shaderPath");
             RequireReadPath(scenePath);
-            RequireReadPath(materialPath);
+            RequireReadPath(shaderPath);
             if (!scenePath.EndsWith(".unity", StringComparison.OrdinalIgnoreCase) || !File.Exists(scenePath)) throw new ArgumentException("validationProfile.scenePath must reference an existing Unity scene.");
-            if (!materialPath.EndsWith(".mat", StringComparison.OrdinalIgnoreCase) || AssetDatabase.LoadAssetAtPath<Material>(materialPath) == null) throw new ArgumentException("target.materialPath must reference a loadable Material asset.");
+            if (!shaderPath.EndsWith(".shader", StringComparison.OrdinalIgnoreCase) || AssetDatabase.LoadAssetAtPath<Shader>(shaderPath) == null) throw new ArgumentException("shaderPath must reference a loadable Shader asset.");
             if (string.IsNullOrWhiteSpace(targetPath) || string.IsNullOrWhiteSpace(cameraPath)) throw new ArgumentException("Validation target and camera paths are required.");
 
             var sessionId = Guid.NewGuid().ToString("N");
@@ -1308,7 +1308,7 @@ namespace UnityMcp.Editor
                 scenePath = scenePath,
                 cameraPath = cameraPath,
                 targetPath = targetPath,
-                materialPath = materialPath,
+                shaderPath = shaderPath,
                 width = GetInt(profile, "width", 1024, 64, 4096),
                 height = GetInt(profile, "height", 1024, 64, 4096),
                 minAverageLuminance = GetFloat(profile, "minAverageLuminance", 0f, 0f, 1f),
@@ -1321,12 +1321,12 @@ namespace UnityMcp.Editor
                 sessionId,
                 createdAtUtc = session.createdAtUtc,
                 validationScene = new { scenePath, cameraPath, width = session.width, height = session.height },
-                target = new { objectPath = targetPath, materialPath },
+                target = new { objectPath = targetPath, shaderPath },
                 criteria = new { session.minAverageLuminance, session.minNonBackgroundRatio },
-                sceneMutation = "The scene is opened additively, the material is restored after capture, and the scene is never saved."
+                sceneMutation = "The scene is opened additively. Capture creates in-memory material copies from the target Renderer, replaces only their Shader, restores the original materials, and never saves the scene."
             }, JsonOptions));
             record.artifacts.Add(path);
-            return new { validationSessionId = sessionId, manifest = new { path, contentHash = Hash(File.ReadAllText(path)) }, status = "ready", validationScene = new { scenePath, cameraPath }, target = new { objectPath = targetPath, materialPath } };
+            return new { validationSessionId = sessionId, manifest = new { path, contentHash = Hash(File.ReadAllText(path)) }, status = "ready", validationScene = new { scenePath, cameraPath }, target = new { objectPath = targetPath, shaderPath } };
         }
 
         private static object CaptureValidation(JsonElement args, JobRecord record)
@@ -1336,6 +1336,7 @@ namespace UnityMcp.Editor
             var scene = EditorSceneManager.OpenScene(session.scenePath, OpenSceneMode.Additive);
             var previousActiveScene = EditorSceneManager.GetActiveScene();
             Material[] originalMaterials = null;
+            Material[] temporaryMaterials = null;
             RenderTexture renderTexture = null;
             Texture2D image = null;
             try
@@ -1344,12 +1345,21 @@ namespace UnityMcp.Editor
                 var renderer = targetObject.GetComponent<Renderer>() ?? throw new ArgumentException("Validation target has no Renderer: " + session.targetPath);
                 var cameraObject = FindGameObject(scene, session.cameraPath) ?? throw new ArgumentException("Validation camera was not found in scene: " + session.cameraPath);
                 var camera = cameraObject.GetComponent<Camera>() ?? throw new ArgumentException("Validation camera has no Camera component: " + session.cameraPath);
-                var material = AssetDatabase.LoadAssetAtPath<Material>(session.materialPath) ?? throw new ArgumentException("Validation material could not be loaded: " + session.materialPath);
+                var shader = AssetDatabase.LoadAssetAtPath<Shader>(session.shaderPath) ?? throw new ArgumentException("Validation Shader could not be loaded: " + session.shaderPath);
 
                 originalMaterials = renderer.sharedMaterials;
-                var assignedMaterials = new Material[Math.Max(1, originalMaterials.Length)];
-                for (var index = 0; index < assignedMaterials.Length; index++) assignedMaterials[index] = material;
-                renderer.sharedMaterials = assignedMaterials;
+                temporaryMaterials = new Material[Math.Max(1, originalMaterials.Length)];
+                for (var index = 0; index < temporaryMaterials.Length; index++)
+                {
+                    // Preserve the test material's compatible values/textures when possible, but never mutate its asset.
+                    temporaryMaterials[index] = originalMaterials.Length > index && originalMaterials[index] != null
+                        ? new Material(originalMaterials[index])
+                        : new Material(shader);
+                    temporaryMaterials[index].shader = shader;
+                    temporaryMaterials[index].name = "AI Shader Validation Temporary Material";
+                    temporaryMaterials[index].hideFlags = HideFlags.HideAndDontSave;
+                }
+                renderer.sharedMaterials = temporaryMaterials;
                 EditorSceneManager.SetActiveScene(scene);
 
                 renderTexture = RenderTexture.GetTemporary(session.width, session.height, 24, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
@@ -1385,7 +1395,13 @@ namespace UnityMcp.Editor
                     decision,
                     capturedAtUtc = DateTime.UtcNow.ToString("o"),
                     validationScene = new { session.scenePath, session.cameraPath },
-                    target = new { session.targetPath, session.materialPath },
+                    target = new
+                    {
+                        session.targetPath,
+                        validationShaderPath = session.shaderPath,
+                        originalMaterialPaths = originalMaterials.Select(AssetDatabase.GetAssetPath).ToArray(),
+                        temporaryMaterialCount = temporaryMaterials.Length
+                    },
                     capture = new { pngPath, contentHash = Hash(File.ReadAllBytes(pngPath)), width = session.width, height = session.height },
                     statistics,
                     criteria = new { session.minAverageLuminance, session.minNonBackgroundRatio },
@@ -1402,6 +1418,13 @@ namespace UnityMcp.Editor
                     var targetObject = FindGameObject(scene, session.targetPath);
                     var renderer = targetObject == null ? null : targetObject.GetComponent<Renderer>();
                     if (renderer != null) renderer.sharedMaterials = originalMaterials;
+                }
+                if (temporaryMaterials != null)
+                {
+                    foreach (var material in temporaryMaterials)
+                    {
+                        if (material != null) UnityEngine.Object.DestroyImmediate(material);
+                    }
                 }
                 if (image != null) UnityEngine.Object.DestroyImmediate(image);
                 if (renderTexture != null) RenderTexture.ReleaseTemporary(renderTexture);
@@ -1479,7 +1502,7 @@ namespace UnityMcp.Editor
             var context = RequireProperty(args, "operationContext");
             if (string.IsNullOrEmpty(GetString(context, "runId"))) throw new UnauthorizedAccessException("operationContext.runId is required for generated asset writes.");
         }
-        private static void RequireReadPath(string path) { ValidatePath(path); if (!(path.StartsWith("Assets/", StringComparison.Ordinal) || path.StartsWith("Packages/", StringComparison.Ordinal) || path.StartsWith("ProjectSettings/", StringComparison.Ordinal) || path.StartsWith("Artifacts/", StringComparison.Ordinal))) throw new UnauthorizedAccessException("Path is outside project read roots."); }
+        private static void RequireReadPath(string path) { ValidatePath(path); if (!(path.StartsWith("Assets/", StringComparison.Ordinal) || path.StartsWith("Packages/", StringComparison.Ordinal) || path.StartsWith("ProjectSettings/", StringComparison.Ordinal) || path.StartsWith("Artifacts/", StringComparison.Ordinal) || path.StartsWith("Tests/", StringComparison.Ordinal))) throw new UnauthorizedAccessException("Path is outside project read roots."); }
         private static void ValidatePath(string path) { if (string.IsNullOrWhiteSpace(path) || Path.IsPathRooted(path) || path.Replace('\\', '/').Contains("../")) throw new UnauthorizedAccessException("Path must be project-relative and may not escape the project."); }
         private static JsonElement RequireProperty(JsonElement element, string name) { if (!element.TryGetProperty(name, out var value)) throw new ArgumentException("Missing required property: " + name); return value; }
         private static string RequireString(JsonElement element, string name) => GetString(element, name) ?? throw new ArgumentException("Missing required string: " + name);
@@ -1527,7 +1550,7 @@ namespace UnityMcp.Editor
             public string scenePath;
             public string cameraPath;
             public string targetPath;
-            public string materialPath;
+            public string shaderPath;
             public int width;
             public int height;
             public float minAverageLuminance;

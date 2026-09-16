@@ -35,24 +35,78 @@ namespace MarkupShaderGUI
                 return;
             }
 
-            MessageType type = summary.rating == "高风险" ? MessageType.Error :
-                summary.rating == "预警" ? MessageType.Warning : MessageType.Info;
-            string headline = "<b>Shader 性能评价：" + summary.rating + "</b>  " + summary.policy;
-            string details = "修订: " + ShortRevision(summary.revision) + "\n" +
-                "片元估计: " + summary.fragmentCost + " | 顶点估计: " + summary.vertexCost +
-                " | 纹理采样: " + summary.textureSamples + " | 分支: " + summary.branches +
-                "\nMali: " + summary.maliStatus + " | GLES 变体: " + summary.variantCount + "\n" + summary.message;
-            EditorGUILayout.HelpBox(headline + "\n" + details, type);
-            if (summary.maliDetails.Length > 0)
-            {
-                summary.expanded = EditorGUILayout.Foldout(summary.expanded, "Mali 变体详情", true);
-                if (summary.expanded)
-                {
-                    foreach (string detail in summary.maliDetails)
-                        EditorGUILayout.LabelField(detail, EditorStyles.wordWrappedMiniLabel);
-                }
-            }
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("性能评价", EditorStyles.boldLabel);
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.LabelField(summary.rating, RatingStyle(summary.rating), GUILayout.Width(66f));
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.LabelField(summary.policy, EditorStyles.miniLabel);
+            EditorGUILayout.Space(3f);
+            DrawMetricRow("片元估计", summary.fragmentCost, "顶点估计", summary.vertexCost);
+            DrawMetricRow("纹理采样", summary.textureSamples, "分支", summary.branches);
+            DrawMetricRow("GLES 变体", summary.variantCount, "Mali", summary.maliStatus);
+            EditorGUILayout.Space(3f);
+            EditorGUILayout.LabelField(summary.message, EditorStyles.wordWrappedMiniLabel);
             EditorGUILayout.Space(4f);
+
+            string buttonText = summary.expanded ? "收起详细数据" : "查看详细数据";
+            if (GUILayout.Button(buttonText, EditorStyles.miniButton))
+                summary.expanded = !summary.expanded;
+
+            if (summary.expanded)
+                DrawDetails(summary);
+
+            EditorGUILayout.EndVertical();
+            EditorGUILayout.Space(4f);
+        }
+
+        private static void DrawMetricRow(string leftLabel, string leftValue, string rightLabel, string rightValue)
+        {
+            EditorGUILayout.BeginHorizontal();
+            DrawMetric(leftLabel, leftValue);
+            GUILayout.Space(8f);
+            DrawMetric(rightLabel, rightValue);
+            EditorGUILayout.EndHorizontal();
+        }
+
+        private static void DrawMetric(string label, string value)
+        {
+            EditorGUILayout.LabelField(label, EditorStyles.miniLabel, GUILayout.Width(62f));
+            EditorGUILayout.LabelField(value, EditorStyles.miniBoldLabel, GUILayout.MinWidth(72f));
+        }
+
+        private static GUIStyle RatingStyle(string rating)
+        {
+            Color color = rating == "高风险" ? new Color(0.95f, 0.35f, 0.32f) :
+                rating == "预警" ? new Color(0.96f, 0.70f, 0.22f) :
+                new Color(0.35f, 0.78f, 0.48f);
+            var style = new GUIStyle(EditorStyles.miniBoldLabel)
+            {
+                alignment = TextAnchor.MiddleRight
+            };
+            style.normal.textColor = color;
+            return style;
+        }
+
+        private static void DrawDetails(Summary summary)
+        {
+            EditorGUILayout.Space(4f);
+            EditorGUILayout.BeginVertical(EditorStyles.textArea);
+            EditorGUILayout.LabelField("详细性能数据", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Shader 修订：" + ShortRevision(summary.revision), EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("Mali 状态：" + summary.maliStatus, EditorStyles.miniLabel);
+            if (summary.maliDetails.Length == 0)
+            {
+                EditorGUILayout.HelpBox("当前没有可展示的 Mali 变体结果。可先导出 GLES 编译变体并配置 Mali Offline Compiler。", MessageType.None);
+            }
+            else
+            {
+                foreach (string detail in summary.maliDetails)
+                    EditorGUILayout.LabelField(detail, EditorStyles.wordWrappedMiniLabel);
+            }
+            EditorGUILayout.EndVertical();
         }
 
         private static Summary GetSummary(Shader shader)

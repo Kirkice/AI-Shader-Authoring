@@ -1,0 +1,7 @@
+{
+  "unityVersion": "6000.5.4f1",
+  "renderPipeline": "UniversalRenderPipelineAsset",
+  "colorSpace": "Linear",
+  "graphicsDevice": "Direct3D12",
+  "packageLockFingerprint": "d08bf00d404a9efbe0cf7074d85e0fbc1aff7751bc60255c05ded99d8a7057e5"
+}

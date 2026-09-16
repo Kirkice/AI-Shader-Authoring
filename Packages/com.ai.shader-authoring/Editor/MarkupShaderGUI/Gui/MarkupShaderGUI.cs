@@ -52,7 +52,7 @@ namespace MarkupShaderGUI
                 return;
 
             GUIStyle style = MarkupShaderGUIStyles.FeatureDescriptionStyle;
-            string content = "<size=15><b>Feature</b></size>\n" + description;
+            string content = "<size=15><b>功能：</b></size>\n" + description;
 
             // 绿底白字需要足够高度，按可用宽度算出实际所需高度。
             float availableWidth = EditorGUIUtility.currentViewWidth - 36f;

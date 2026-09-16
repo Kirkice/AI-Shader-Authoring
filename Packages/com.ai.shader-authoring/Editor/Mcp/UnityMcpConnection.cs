@@ -434,6 +434,18 @@ public static class UnityMcpCommandExecutor
                 options.ReferencedAssemblies.Add(typeof(UnityEngine.Object).Assembly.Location);
                 options.ReferencedAssemblies.Add(typeof(UnityEditor.Editor).Assembly.Location);
 
+                // Unity 2021+ 的 Editor 程序集依赖 netstandard；运行时编译命令时必须显式传入其实际加载的程序集。
+                var netStandardAssembly = AppDomain.CurrentDomain.GetAssemblies()
+                    .FirstOrDefault(assembly => string.Equals(assembly.GetName().Name, "netstandard", StringComparison.OrdinalIgnoreCase));
+                if (netStandardAssembly != null && !string.IsNullOrWhiteSpace(netStandardAssembly.Location))
+                    options.ReferencedAssemblies.Add(netStandardAssembly.Location);
+
+                // 部分受控 MCP 命令需要调用性能工具；动态命令编译时也应解析项目已使用的 System.Text.Json。
+                var systemTextJsonAssembly = AppDomain.CurrentDomain.GetAssemblies()
+                    .FirstOrDefault(assembly => string.Equals(assembly.GetName().Name, "System.Text.Json", StringComparison.OrdinalIgnoreCase));
+                if (systemTextJsonAssembly != null && !string.IsNullOrWhiteSpace(systemTextJsonAssembly.Location))
+                    options.ReferencedAssemblies.Add(systemTextJsonAssembly.Location);
+
                 using (var provider = new CSharpCodeProvider())
                 {
                     var results = provider.CompileAssemblyFromSource(options, wrappedCode);
@@ -443,7 +455,14 @@ public static class UnityMcpCommandExecutor
                         throw new InvalidOperationException("Compilation failed:\n" + errors);
                     }
                     var method = results.CompiledAssembly.GetType("UnityMcpCommandExecutor")?.GetMethod("Execute");
-                    return method?.Invoke(null, null);
+                    try
+                    {
+                        return method?.Invoke(null, null);
+                    }
+                    catch (System.Reflection.TargetInvocationException exception) when (exception.InnerException != null)
+                    {
+                        throw exception.InnerException;
+                    }
                 }
             }
         }

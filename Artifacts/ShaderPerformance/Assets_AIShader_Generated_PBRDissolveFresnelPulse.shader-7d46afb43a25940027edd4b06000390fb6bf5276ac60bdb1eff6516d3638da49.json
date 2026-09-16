@@ -1,0 +1,61 @@
+{
+  "schemaVersion": "2.0",
+  "analysisAvailability": "non_blocking",
+  "shaderPath": "Assets/AIShader/Generated/PBRDissolveFresnelPulse.shader",
+  "shaderRevision": "7d46afb43a25940027edd4b06000390fb6bf5276ac60bdb1eff6516d3638da49",
+  "analyzedAtUtc": "2026-09-16T11:07:39.3387790Z",
+  "runId": "pbr-dissolve-fresnel-pulse-performance-20260916",
+  "policy": "high_android",
+  "policyLabel": "\u9AD8\u7AEF Android \u00B7 Mali-G78",
+  "budgets": {},
+  "maliTargets": [
+    "Mali-G78"
+  ],
+  "compiledGlesVariantCount": 0,
+  "compiledGlesStatus": "failed",
+  "compiledGlesDiagnostics": [
+    "Unity did not produce a fresh compiled Shader artifact in Temp."
+  ],
+  "rating": "\u4FE1\u606F",
+  "message": "\u91CD\u70B9\u5173\u6CE8\uFF1A\u9AD8\u4EE3\u4EF7\u6570\u5B66\u3001\u7EB9\u7406\u91C7\u6837\u3001\u900F\u660E\u6216\u88C1\u526A\u3002 \u9759\u6001\u9884\u7B97\uFF1A\u7247\u5143 150\u3001\u91C7\u6837 8\u3001\u5206\u652F 10\u3002Mali \u72B6\u6001\uFF1AGLES \u7F16\u8BD1\u5BFC\u51FA\u4E0D\u53EF\u7528\u3002\u6027\u80FD\u7ED3\u8BBA\u4EC5\u9884\u8B66\uFF0C\u4E0D\u4F1A\u963B\u65AD\u89C6\u89C9\u9A8C\u6536\u3002",
+  "textureSampleCount": 6,
+  "branchCount": 0,
+  "keywordDirectiveCount": 5,
+  "fragmentEstimatedCost": 101,
+  "vertexEstimatedCost": 15,
+  "highCostModules": [
+    {
+      "name": "\u9AD8\u4EE3\u4EF7\u6570\u5B66",
+      "count": 5,
+      "weight": 25,
+      "risk": "\u6CE8\u610F",
+      "evidence": "pow/exp/log/sqrt/normalize \u7B49\u51FD\u6570\u8C03\u7528"
+    },
+    {
+      "name": "\u7EB9\u7406\u91C7\u6837",
+      "count": 6,
+      "weight": 24,
+      "risk": "\u6CE8\u610F",
+      "evidence": "\u7EB9\u7406\u3001\u91C7\u6837\u5668\u6216\u91C7\u6837\u5B8F\u5F15\u7528"
+    },
+    {
+      "name": "\u900F\u660E\u6216\u88C1\u526A",
+      "count": 1,
+      "weight": 4,
+      "risk": "\u6CE8\u610F",
+      "evidence": "clip \u6216 Blend \u6E32\u67D3\u8DEF\u5F84"
+    }
+  ],
+  "maliStatus": "GLES \u7F16\u8BD1\u5BFC\u51FA\u4E0D\u53EF\u7528",
+  "maliResults": [],
+  "maliBudgetAssessment": {
+    "highRisk": false,
+    "warning": false,
+    "violations": []
+  },
+  "limitations": [
+    "Static estimates are heuristics and do not represent device frame time.",
+    "Mali results apply only to supplied compiled GLES GLSL stages and selected target GPUs.",
+    "This report is advisory and never blocks visual validation."
+  ]
+}

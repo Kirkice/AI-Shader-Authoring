@@ -149,10 +149,18 @@ namespace UnityMcp.Editor
         private static void InvokeOpenCompiledShader(Shader shader, int glesMask)
         {
             Type shaderUtilType = Type.GetType("UnityEditor.ShaderUtil, UnityEditor");
-            MethodInfo method = shaderUtilType?.GetMethod("OpenCompiledShader", BindingFlags.Static | BindingFlags.NonPublic, null, new[] { typeof(Shader), typeof(int), typeof(int), typeof(bool) }, null);
-            if (method == null) throw new MissingMethodException("UnityEditor.ShaderUtil.OpenCompiledShader(Shader,int,int,bool)");
+            // Unity 6 added two export options after includeAllVariants. Prefer the current overload,
+            // while retaining compatibility with Editors exposing the legacy four-argument method.
+            MethodInfo method = shaderUtilType?.GetMethod("OpenCompiledShader", BindingFlags.Static | BindingFlags.NonPublic, null,
+                new[] { typeof(Shader), typeof(int), typeof(int), typeof(bool), typeof(bool), typeof(bool) }, null)
+                ?? shaderUtilType?.GetMethod("OpenCompiledShader", BindingFlags.Static | BindingFlags.NonPublic, null,
+                    new[] { typeof(Shader), typeof(int), typeof(int), typeof(bool) }, null);
+            if (method == null) throw new MissingMethodException("UnityEditor.ShaderUtil.OpenCompiledShader compatible overload");
             // mode 0 is Unity's compiled-shader export mode. The platform mask is explicitly GLES3x.
-            method.Invoke(null, new object[] { shader, 0, glesMask, true });
+            object[] invocation = method.GetParameters().Length == 6
+                ? new object[] { shader, 0, glesMask, true, false, false }
+                : new object[] { shader, 0, glesMask, true };
+            method.Invoke(null, invocation);
         }
 
         private static IEnumerable<CompiledGlesVariant> ParseGlesVariants(string compiledText, List<string> diagnostics)

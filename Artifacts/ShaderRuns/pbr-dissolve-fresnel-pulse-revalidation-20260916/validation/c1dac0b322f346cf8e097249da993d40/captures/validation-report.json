@@ -1,0 +1,38 @@
+{
+  "decision": "pass",
+  "capturedAtUtc": "2026-09-16T10:57:36.3624021Z",
+  "validationScene": {
+    "scenePath": "Packages/com.ai.shader-authoring/Tests/AI Shader Authoring.unity",
+    "cameraPath": "Main Camera"
+  },
+  "target": {
+    "targetPath": "AIShader_Sphere",
+    "validationShaderPath": "Assets/AIShader/Generated/PBRDissolveFresnelPulse.shader",
+    "originalMaterialPaths": [
+      "Assets/AIShader/Generated/PBRDissolveFresnelPulse.mat"
+    ],
+    "temporaryMaterialCount": 1
+  },
+  "capture": {
+    "pngPath": "Artifacts/ShaderRuns/pbr-dissolve-fresnel-pulse-revalidation-20260916/validation/c1dac0b322f346cf8e097249da993d40/captures/material-validation.png",
+    "contentHash": "641ccaa67905c073c85edadf213e1bf984de380610fabb341ddf3ce064310573",
+    "width": 1024,
+    "height": 1024
+  },
+  "statistics": {
+    "width": 1024,
+    "height": 1024,
+    "averageColor": {
+      "r": 0.68965596,
+      "g": 0.738389373,
+      "b": 0.758966863
+    },
+    "averageLuminance": 0.72951436,
+    "nonBackgroundRatio": 0.806724548
+  },
+  "criteria": {
+    "minAverageLuminance": 0.00999999978,
+    "minNonBackgroundRatio": 0.00999999978
+  },
+  "automaticDecisionScope": "Pixel thresholds only establish non-empty render evidence. Visual compliance with the requested material intent requires screenshot review."
+}

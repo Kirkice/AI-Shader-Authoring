@@ -1,0 +1,175 @@
+--- before
+
++++ after
+Shader "AI Shader/PBR Dissolve Fresnel Pulse"
+{
+    Properties
+    {
+        _BaseMap("基础贴图", 2D) = "white" {}
+        _BaseColor("基础色", Color) = (1, 1, 1, 1)
+        _Metallic("金属度", Range(0, 1)) = 0
+        _Smoothness("光滑度", Range(0, 1)) = 0.5
+
+        _ReflectionCube("镜面反射 Cubemap", Cube) = "black" {}
+        _ReflectionTint("反射颜色", Color) = (1, 1, 1, 1)
+        _ReflectionIntensity("反射强度", Range(0, 4)) = 1
+        _ReflectionRoughness("反射粗糙度", Range(0, 1)) = 0.25
+
+        _DissolveNoise("溶解噪声", 2D) = "white" {}
+        _DissolveThreshold("溶解阈值", Range(0, 1)) = 0
+        _DissolveEdgeWidth("溶解边缘宽度", Range(0.001, 0.5)) = 0.08
+        [HDR] _DissolveEdgeColor("溶解边缘颜色", Color) = (1, 0.25, 0.02, 1)
+        _DissolveEdgeIntensity("溶解边缘发光强度", Range(0, 20)) = 3
+
+        _PulseMask("呼吸光遮罩", 2D) = "white" {}
+        [HDR] _PulseColor("呼吸光颜色", Color) = (0.05, 0.5, 1, 1)
+        _PulseIntensity("呼吸光强度", Range(0, 20)) = 2
+        _PulseSpeed("呼吸速度", Range(0, 10)) = 1
+        _PulseMinIntensity("呼吸光最低比例", Range(0, 1)) = 0.2
+
+        [HDR] _FresnelColor("菲涅尔颜色", Color) = (0.2, 0.7, 1, 1)
+        _FresnelIntensity("菲涅尔强度", Range(0, 20)) = 2
+        _FresnelPower("菲涅尔指数", Range(0.1, 12)) = 4
+    }
+
+    SubShader
+    {
+        Tags { "RenderPipeline" = "UniversalPipeline" "RenderType" = "Opaque" "Queue" = "AlphaTest" }
+        LOD 300
+
+        Pass
+        {
+            Name "ForwardLit"
+            Tags { "LightMode" = "UniversalForward" }
+
+            Cull Back
+            ZWrite On
+            ZTest LEqual
+
+            HLSLPROGRAM
+            #pragma vertex Vert
+            #pragma fragment Frag
+            #pragma target 3.5
+            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE _MAIN_LIGHT_SHADOWS_SCREEN
+            #pragma multi_compile _ _ADDITIONAL_LIGHTS_VERTEX _ADDITIONAL_LIGHTS
+            #pragma multi_compile _ _ADDITIONAL_LIGHT_SHADOWS
+            #pragma multi_compile _ _SHADOWS_SOFT
+            #pragma multi_compile_fog
+            #pragma multi_compile _ LIGHTMAP_ON
+
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+
+            CBUFFER_START(UnityPerMaterial)
+                float4 _BaseMap_ST;
+                float4 _DissolveNoise_ST;
+                float4 _PulseMask_ST;
+                half4 _BaseColor;
+                half _Metallic;
+                half _Smoothness;
+                half4 _ReflectionTint;
+                half _ReflectionIntensity;
+                half _ReflectionRoughness;
+                half _DissolveThreshold;
+                half _DissolveEdgeWidth;
+                half4 _DissolveEdgeColor;
+                half _DissolveEdgeIntensity;
+                half4 _PulseColor;
+                half _PulseIntensity;
+                half _PulseSpeed;
+                half _PulseMinIntensity;
+                half4 _FresnelColor;
+                half _FresnelIntensity;
+                half _FresnelPower;
+            CBUFFER_END
+
+            TEXTURE2D(_BaseMap);       SAMPLER(sampler_BaseMap);
+            TEXTURE2D(_DissolveNoise); SAMPLER(sampler_DissolveNoise);
+            TEXTURE2D(_PulseMask);     SAMPLER(sampler_PulseMask);
+            TEXTURECUBE(_ReflectionCube); SAMPLER(sampler_ReflectionCube);
+
+            struct Attributes
+            {
+                float4 positionOS : POSITION;
+                float3 normalOS : NORMAL;
+                float2 uv : TEXCOORD0;
+            };
+
+            struct Varyings
+            {
+                float4 positionCS : SV_POSITION;
+                float3 positionWS : TEXCOORD0;
+                half3 normalWS : TEXCOORD1;
+                float2 uv : TEXCOORD2;
+                half fogFactor : TEXCOORD3;
+            };
+
+            Varyings Vert(Attributes input)
+            {
+                Varyings output;
+                VertexPositionInputs positionInputs = GetVertexPositionInputs(input.positionOS.xyz);
+                VertexNormalInputs normalInputs = GetVertexNormalInputs(input.normalOS);
+                output.positionCS = positionInputs.positionCS;
+                output.positionWS = positionInputs.positionWS;
+                output.normalWS = normalInputs.normalWS;
+                output.uv = input.uv;
+                output.fogFactor = ComputeFogFactor(positionInputs.positionCS.z);
+                return output;
+            }
+
+            half4 Frag(Varyings input) : SV_Target
+            {
+                float2 baseUv = TRANSFORM_TEX(input.uv, _BaseMap);
+                half4 baseSample = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, baseUv);
+
+                // 溶解优先决定片元存活，边缘带仅对保留片元贡献自发光。
+                half noise = SAMPLE_TEXTURE2D(_DissolveNoise, sampler_DissolveNoise, TRANSFORM_TEX(input.uv, _DissolveNoise)).r;
+                clip(noise - _DissolveThreshold);
+                half edgeBand = 1.0h - saturate((noise - _DissolveThreshold) / _DissolveEdgeWidth);
+
+                half3 normalWS = normalize(input.normalWS);
+                half3 viewDirectionWS = SafeNormalize(GetWorldSpaceViewDir(input.positionWS));
+                half3 reflectionDirection = reflect(-viewDirectionWS, normalWS);
+                half reflectionMip = _ReflectionRoughness * 6.0h;
+                half3 cubeReflection = SAMPLE_TEXTURECUBE_LOD(_ReflectionCube, sampler_ReflectionCube, reflectionDirection, reflectionMip).rgb;
+
+                // 呼吸光与菲涅尔均在 PBR 光照之后以自发光方式叠加。
+                half pulseMask = SAMPLE_TEXTURE2D(_PulseMask, sampler_PulseMask, TRANSFORM_TEX(input.uv, _PulseMask)).r;
+                half pulseWave = lerp(_PulseMinIntensity, 1.0h, 0.5h + 0.5h * sin(_Time.y * _PulseSpeed));
+                half fresnel = pow(saturate(1.0h - dot(normalWS, viewDirectionWS)), _FresnelPower);
+                half3 emission = edgeBand * _DissolveEdgeColor.rgb * _DissolveEdgeIntensity;
+                emission += pulseMask * _PulseColor.rgb * (_PulseIntensity * pulseWave);
+                emission += fresnel * _FresnelColor.rgb * _FresnelIntensity;
+                emission += cubeReflection * _ReflectionTint.rgb * _ReflectionIntensity;
+
+                SurfaceData surfaceData = (SurfaceData)0;
+                surfaceData.albedo = baseSample.rgb * _BaseColor.rgb;
+                surfaceData.metallic = _Metallic;
+                surfaceData.specular = 0;
+                surfaceData.smoothness = _Smoothness;
+                surfaceData.normalTS = half3(0, 0, 1);
+                surfaceData.occlusion = 1;
+                surfaceData.emission = emission;
+                surfaceData.alpha = baseSample.a * _BaseColor.a;
+                surfaceData.clearCoatMask = 0;
+                surfaceData.clearCoatSmoothness = 0;
+
+                InputData inputData = (InputData)0;
+                inputData.positionWS = input.positionWS;
+                inputData.normalWS = normalWS;
+                inputData.viewDirectionWS = viewDirectionWS;
+                inputData.shadowCoord = TransformWorldToShadowCoord(input.positionWS);
+                inputData.fogCoord = input.fogFactor;
+                inputData.vertexLighting = half3(0, 0, 0);
+                inputData.bakedGI = SampleSH(normalWS);
+                inputData.normalizedScreenSpaceUV = GetNormalizedScreenSpaceUV(input.positionCS);
+                inputData.shadowMask = half4(1, 1, 1, 1);
+
+                half4 color = UniversalFragmentPBR(inputData, surfaceData);
+                color.rgb = MixFog(color.rgb, input.fogFactor);
+                return color;
+            }
+            ENDHLSL
+        }
+    }
+}

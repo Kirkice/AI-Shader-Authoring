@@ -90,7 +90,10 @@ namespace UnityMcp.Editor
 
         private void OnGUI()
         {
-            if (panelTexture == null) CreateStyles();
+            // Domain reloads can leave textures alive while GUIStyle instances are reset. Rebuild the
+            // entire skin whenever any style/texture dependency is missing, so GUI.Label never receives
+            // a null style during the first repaint after compilation.
+            if (!HasCompleteSkin()) CreateStyles();
 
             var canvas = new Rect(0f, 0f, position.width, position.height);
             EditorGUI.DrawRect(canvas, new Color(0.22f, 0.22f, 0.22f));
@@ -255,8 +258,34 @@ namespace UnityMcp.Editor
             GUI.Label(rect, label, EditorStyles.miniBoldLabel);
         }
 
+        private bool HasCompleteSkin()
+        {
+            return panelTexture != null
+                && selectedPanelTexture != null
+                && secondaryButtonTexture != null
+                && successTexture != null
+                && warningTexture != null
+                && errorTexture != null
+                && eyebrowStyle != null
+                && headingStyle != null
+                && statusStyle != null
+                && bodyStyle != null
+                && endpointStyle != null
+                && chipStyle != null
+                && secondaryButtonStyle != null
+                && toolTitleStyle != null
+                && toolSummaryStyle != null;
+        }
+
         private void CreateStyles()
         {
+            DestroyTexture(ref panelTexture);
+            DestroyTexture(ref selectedPanelTexture);
+            DestroyTexture(ref secondaryButtonTexture);
+            DestroyTexture(ref successTexture);
+            DestroyTexture(ref warningTexture);
+            DestroyTexture(ref errorTexture);
+
             // 采用 Unity Editor 深色主题的中性灰阶；状态色只用于连接状态提示。
             panelTexture = MakeTexture(new Color(0.24f, 0.24f, 0.24f));
             selectedPanelTexture = MakeTexture(new Color(0.28f, 0.28f, 0.28f));

@@ -1,0 +1,19 @@
+{
+  "sessionId": "b6e59627a9a241b38b0a665df349b565",
+  "createdAtUtc": "2026-09-16T10:52:41.8552647Z",
+  "validationScene": {
+    "scenePath": "Packages/com.ai.shader-authoring/Tests/AI Shader Authoring.unity",
+    "cameraPath": "Main Camera",
+    "width": 1024,
+    "height": 1024
+  },
+  "target": {
+    "objectPath": "AIShader_Sphere",
+    "shaderPath": "Assets/AIShader/Generated/PBRDissolveFresnelPulse.shader"
+  },
+  "criteria": {
+    "minAverageLuminance": 0.00999999978,
+    "minNonBackgroundRatio": 0.00999999978
+  },
+  "sceneMutation": "The scene is opened additively. Capture creates in-memory material copies from the target Renderer, replaces only their Shader, restores the original materials, and never saves the scene."
+}

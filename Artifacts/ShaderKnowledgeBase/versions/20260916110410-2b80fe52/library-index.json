@@ -1,0 +1,788 @@
+[
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/ACES.hlsl",
+    "sourceRevision": "7e7978f40993e90c34c29ba3cbda505a64ed5d2e7920907b247e5ff335522c94",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/API/D3D11.hlsl",
+    "sourceRevision": "dc9362fc3f1f495735681247bbca47d304d08b2a7252772d71037bad9a8b70dc",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/API/FoveatedRendering_Metal.hlsl",
+    "sourceRevision": "855febb802286ba9326ff06bab2f4d87cb1476f017aeca377e6662075dd0fa50",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/API/GLCore.hlsl",
+    "sourceRevision": "1a596106e426fcda48e3352ea76b5c414b1ec88240983e72749f0966bb33049a",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/API/GLES3.hlsl",
+    "sourceRevision": "534dbcc9ae0b2adfcc5dfdfe4e55e9bde2f1d2a0fef500df3887c6271b79d4f0",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/API/Metal.hlsl",
+    "sourceRevision": "ad2ea4c9a5081350f8e4c70f70c25186c47497b70f34a76257a50e9f97a9f218",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/API/Switch.hlsl",
+    "sourceRevision": "a5c3676af63d5a5ac08977b392a2b1b09928938f396d5c7fa9ff1fc48667a8d9",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/API/Switch2.hlsl",
+    "sourceRevision": "d9a25983634c677901d972d7f3b69d1c20bf430a8856c74cefe45e7b4ae7224f",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/API/Validate.hlsl",
+    "sourceRevision": "3134db504d40f1a1fbf300af43fbf8c7ba62937dab96e873c998b20546be9b0d",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/API/Vulkan.hlsl",
+    "sourceRevision": "1db76338dc58bf627f5f7dfa3716534ef561200494d9531ca7b11402af3ad5f1",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/API/WebGPU.hlsl",
+    "sourceRevision": "c175504ba82912a22031213b5b81fcb2896f0db13f4697ebd44ee8e0b72db541",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/AmbientProbe.hlsl",
+    "sourceRevision": "c34711410eddad9de1f189ced4e711d02c0245cfb8dd3bb93d06944ad8d5aa54",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/AreaLighting.hlsl",
+    "sourceRevision": "74b6e4be9bbec6c5c5c29a50f375d4ec26a72feed7f88773397a8e7c4607ba59",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/BC6H.hlsl",
+    "sourceRevision": "a29ad19c23354caa6745fe595a5cc6073ace85c61ee0b0833502f43ecb68b8c5",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/BSDF.hlsl",
+    "sourceRevision": "c19e8362b94a9e9ecdb2b422706b825b2f9599220d29c97f29d7801b1e53eb83",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/Color.hlsl",
+    "sourceRevision": "21ec6ebfa1ae02cce8b4966e669ddd0d437dd4c89422712e6b48d1ee3cf18c3e",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl",
+    "sourceRevision": "0a6a5fcf220db789b3cebf0421b71ba19a0fca9846bc6036f776f0254571c035",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/CommonDeprecated.hlsl",
+    "sourceRevision": "44745d7cebaa271e6aef262d55db3debcbe26117a1929a21459cac5f62dd2cdd",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/CommonLighting.hlsl",
+    "sourceRevision": "88a3da8d877f2d5f4406ae621b2eb3a3761bdd3a687906ef77dd7d48d583f028",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/CommonMaterial.hlsl",
+    "sourceRevision": "1025efb7d34f4f73864944624490684ca11e5d35dfa5435895d7bd6d2d640b74",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/CommonShadow.hlsl",
+    "sourceRevision": "d733ae50f0c0f6009615644abe74a3d46e6d91905b3897abf52c2b64d3e2457b",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/Coverage.hlsl",
+    "sourceRevision": "8cc74314f6633887345979a3d3c3078dc9e5903b204ae0b87f87b03277728775",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/Debug.hlsl",
+    "sourceRevision": "b98556d3ee6d2be7dafaca88ebe7e5764c4de4c146d08568568a862090527046",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/DebugMipmapStreaming.hlsl",
+    "sourceRevision": "8fb6e2673857513f599b0f134d53030b83e6f04d1546e266cbbfb66da6d95044",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/DebugMipmapStreamingMacros.hlsl",
+    "sourceRevision": "e5062897f2e34f61da4260804bd2fda337bb0e0a22c9ba020089521886c7bab1",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/DynamicScaling.hlsl",
+    "sourceRevision": "c164f4ec318a8aef241e4917a03890773d53b77fe21531f28d8ffa7901e7fab1",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/DynamicScalingClamping.hlsl",
+    "sourceRevision": "5ddd7c916537b74608af51ad688985ac6e1d12ac7d984fa6b901a31a73aeb2ee",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/EntityLighting.hlsl",
+    "sourceRevision": "ea013951841e68cc2c2a7306a4d8e265bd89786cd54e9535fa660cb00fd4c92a",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/Filtering.hlsl",
+    "sourceRevision": "6b8e0ad9d70cf4af4b43ccb0a068172db524397b48596cd0bebac8b9ba4110c5",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/FoveatedRendering.hlsl",
+    "sourceRevision": "188d904bfd6357f0e6bf5ecefb6839030a552ce8b72c427ad11e9b6720f31ed1",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/FoveatedRenderingKeywords.hlsl",
+    "sourceRevision": "a2cb0a8c51241e2568ef5e5a8cf723afbf6210125307cb847d745e5d3f5c2c2e",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/GeometricTools.hlsl",
+    "sourceRevision": "a0f6e451bfcef4a9e762a7ffc43bdedc3941de04fbbd164aad457bbb6db7b742",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/GlobalSamplers.hlsl",
+    "sourceRevision": "f8db3219070a49de17e423bbfa2839becbecbd614c02f4888b39396f8e5d90db",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/GraniteShaderLibBase.hlsl",
+    "sourceRevision": "91546786707f01cdae2175760cf9a0143cddd757c3ffd664d716345344d62d47",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/HDROutput.hlsl",
+    "sourceRevision": "637ede00d56de30e16ed86397c2a7b40f4e34cc0797e4e88057884994cf14a6c",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/Hashes.hlsl",
+    "sourceRevision": "11631eed88c5aaf4ea42b7c302d5a9a6d09a7bb91c59e1f097616e4152aa89a5",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/ImageBasedLighting.hlsl",
+    "sourceRevision": "64fd0c04fc23c934a11b9d522ae782cb479ed75af19a318d1fbfdaed63ccdebe",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/Macros.hlsl",
+    "sourceRevision": "bc2fcddd337b4f18ff6b1f89b5c487f9b974d18e9d4eac4f1da63ca1e2914816",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/MetaPass.hlsl",
+    "sourceRevision": "f36f7105fcae2519561d50853f8e188e04255ced43535b8977d5fd1b0e2b2bc7",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/MostRepresentativePoint.hlsl",
+    "sourceRevision": "38af3ea4ee02c7142a7cb908eb864a6566717e2523fd988747d1889eac3900d7",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/NormalSurfaceGradient.hlsl",
+    "sourceRevision": "3e197764ea9011b4f314daafaf041e2c99527a26c598b423bf5ac25813960ae7",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/Packing.hlsl",
+    "sourceRevision": "df21b00c1457ce5c8c1ae6069fb4e6e4b4e15b3334ece98a28b7d2e8f302082e",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/ParallaxMapping.hlsl",
+    "sourceRevision": "b9887bea0370a49ff421289c48ae440bd39df9f7f29e4763ea59bc7fcf522969",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/PerPixelDisplacement.hlsl",
+    "sourceRevision": "5ba2d89faafbb5e6bf254321ecc1eef87666c9f25b4509966197a6d89453c599",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/PhysicalCamera.hlsl",
+    "sourceRevision": "94291f3714173b2e5caf2128bf1afbac79190467f85f0b3bbcc58ad36ee54dca",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/Random.hlsl",
+    "sourceRevision": "4d788edda5d92cb119ae7fe19e47965338979997e64d8df701ae6df1175d0be7",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/Refraction.hlsl",
+    "sourceRevision": "d0c0b5d1ea65dfe3494b8c2157f6484f8bb6d6c20af797873aea9443fdeaef07",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/SDF2D.hlsl",
+    "sourceRevision": "687c36cd79b5624f44573c6bc56d4a6dd47f3311b4dfebff84caf660849a28ee",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/Sampling/Fibonacci.hlsl",
+    "sourceRevision": "6b10fa6d4abf21b09af8d9830e92011e88a7b50442d4c608d14e539e0c7995fe",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/Sampling/Hammersley.hlsl",
+    "sourceRevision": "69ec8e738afd4641c24976fbe8f07da1cdea6ef012ff21daef4f573ad56f7f88",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/Sampling/SampleUVMapping.hlsl",
+    "sourceRevision": "e6f64ab4936c972e2b553849eb2ac44afa504d51f8b7df306d54318b1a6ec055",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/Sampling/SampleUVMappingInternal.hlsl",
+    "sourceRevision": "dcc1a8510ae89a8c302d333ee0c84e973e2726c1c21cc4a875d3d080527f895b",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/Sampling/SampleUVMappingNormalInternal.hlsl",
+    "sourceRevision": "4e24020662734be8182b79098180c24ca9a988a38799e1a39554c2102eaf688f",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/Sampling/Sampling.hlsl",
+    "sourceRevision": "2ac6f764056f27d70d62570ef00dd26f38be61d1f8d7701737445ce48981309f",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/ScreenCoordOverride.hlsl",
+    "sourceRevision": "8b244dbb92a478cf748b296fb2c77447517468fab3857b1be0357bf1dc8deccc",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/ShaderDebugPrint.hlsl",
+    "sourceRevision": "8617f653d0b95b84462a19ea8ce0a35bbb850e681a9f1a9be1d2f53175fac04f",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/Shadow/ShadowSamplingTent.hlsl",
+    "sourceRevision": "77e2d61fdcfa891d5164653d6e0b3fd0666987189aa9d67a826209c457144a9b",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/SixWayLighting.hlsl",
+    "sourceRevision": "b53f96921fe7ae0c6a33597878bbed6639df4f7ac4d104a9c4a0242ac94b4fcd",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/SpaceFillingCurves.hlsl",
+    "sourceRevision": "94a8d8378a7397939bfe700ec8d61ec5d9e3e905efb00b4e901713ff5b616612",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/SpaceTransforms.hlsl",
+    "sourceRevision": "bd0c174c2300eec9baf99bddc5b003e34082766950d86e8d3746df7e8693acfa",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/SphericalHarmonics.hlsl",
+    "sourceRevision": "ad654583b2dffc159ebad16383d560f6e710d1b2fe87aa18e1a47596cb0261da",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/Tessellation.hlsl",
+    "sourceRevision": "518f783e56856ae06c5de0f8aa312ccdb4eb2967a6309a54581698428fd4f496",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/Texture.hlsl",
+    "sourceRevision": "2baa3eb5c768392f0a1b47c253f1cfab4bf25660565dc77c6baec58efc561b0a",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/TextureStack.hlsl",
+    "sourceRevision": "c28467449c70a9d73f6226d84045445573500c4a2a9cda5a52cffd3d7d48e1e6",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/TextureXR.hlsl",
+    "sourceRevision": "d5dae152ecf158c3ec21c4eda17d97afef68beb20f0dc2c84a16362f162791b9",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/Threading.hlsl",
+    "sourceRevision": "42296eb48d620683b735ce331d1e258ea6cf89e56561160171ceb37589eeefea",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/ThreadingEmuImpl.hlsl",
+    "sourceRevision": "4aa9ab82e63a12d060ac93e4f4ac7f2a7e8a2c70f56b8e392f27f572ce1412c1",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/ThreadingSM6Impl.hlsl",
+    "sourceRevision": "8eb3a397d75548b3f0544b97a78a644d41dba6a75d36e859e701bc12882ec3be",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/UnityDOTSInstancing.hlsl",
+    "sourceRevision": "7e09ccf4267412c30ee60271f1149c045a783938e7681e8b33a1d13e46b96b65",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/UnityInstancing.hlsl",
+    "sourceRevision": "b0627d99f754c6e5b07a45dbce3cf9857854d24473da25d0696bfaf4feb11d5a",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/Version.hlsl",
+    "sourceRevision": "7712221f6a5d67235080a7e5a11b83b2a51c641f1b6cee4b73a702af33adde59",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/VertexCubeSlicing.hlsl",
+    "sourceRevision": "5cf1102f4462da43d1bee275b0ae114ce8dc77985f868cc2c58cd3776fce22b7",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/VirtualTexturing.hlsl",
+    "sourceRevision": "1031f93aec4313da822516e05fc6f94c7e3283b9edff3584492205c2844a64c8",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.core/ShaderLibrary/VolumeRendering.hlsl",
+    "sourceRevision": "93450c4c90f1d709024042ac07c35e49dad598f779a81fd6d4e24609c6bc97d1",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.core"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/AmbientOcclusion.hlsl",
+    "sourceRevision": "956d26b0185dc1f96761e00ee1f6ead09368c09a3274e92a02ed2fc290d76d69",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/BRDF.hlsl",
+    "sourceRevision": "1e8427056b0ab3046adf753d72fc3afee3d54c335e38a4d1069e6eedb0f78075",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Clustering.hlsl",
+    "sourceRevision": "25726d2f0f9f28e20228d87f08d4b772b762acf2ffc31c6416c57799e9d735fc",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl",
+    "sourceRevision": "9614b01872c7afbb732ec1b6958fcdaaa04fc9650107fa6b1121c9f647d40b40",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DBuffer.hlsl",
+    "sourceRevision": "8b0fa67deb613f74f9baaec694a154ccf51bf5c1aac3df69a7431922797d6a83",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DOTS.hlsl",
+    "sourceRevision": "424a623118393c12bf4191ed1873c1d88fc66c9afa74e7488782271a25cc9e0f",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Debug/DebugViewEnums.cs.hlsl",
+    "sourceRevision": "c1e81175359ca8ce2aaf6672db0f4fe17f6f99660dae5a2a527ea7cbfbb19179",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Debug/Debugging2D.hlsl",
+    "sourceRevision": "2a143171982a8e99f31039afccad4d3cf656a36efecc58cab37b63fc0a843f65",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Debug/Debugging3D.hlsl",
+    "sourceRevision": "4c3a2e61256b76efdd2752787caea7b0b203ad1a77b88ad0120dcc48ef599564",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Debug/DebuggingCommon.hlsl",
+    "sourceRevision": "98b99e2cb1490186c1041eab8ca20ca88160746937c3c58b03fb52d202726030",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Debug/DebuggingFullscreen.hlsl",
+    "sourceRevision": "7977d699c0141c050f698a6e9d3d4b13685fbf3cb67914751264f306bde941be",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DecalInput.hlsl",
+    "sourceRevision": "7d05a2431d8b2c2aa633c617ac149fdbe6f74d3e773e34944dcfb93146d39036",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl",
+    "sourceRevision": "34b4f55ab9e194be8668ac956040c66d5cfb8538f5f9beacf3c728903cf8a870",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareNormalsTexture.hlsl",
+    "sourceRevision": "ed132121e777da506e39c19ca1f36fef97cd4edc3c48affeab978c14512af4a2",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareOpaqueTexture.hlsl",
+    "sourceRevision": "325946c3cdec3b2cba796980722c522653ec9140e46be0f2857e25fd7a4c5f05",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareRenderingLayerTexture.hlsl",
+    "sourceRevision": "c969250adf68da0a1ede06405bd80bcc7ba92b39a5fd775a3cd26d5b12a6ee3e",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Deprecated.hlsl",
+    "sourceRevision": "5b6c0b3a2e9ad8f6285f30aed67952de8e4431524f14c326c574dbc7502a2d21",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Fog.hlsl",
+    "sourceRevision": "28247dc565ce3d56d588667ddf8281f25301552e82c9f4ccaa483dc23434302a",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ForwardPlusKeyword.deprecated.hlsl",
+    "sourceRevision": "0224bd4f92a6189112a5cfd07d9762555788e58a38b250eec1a3f2217c10030e",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/GBufferCommon.hlsl",
+    "sourceRevision": "9f262c9c328962655babb37f3eb8c1640ffce304836b7d62689a3d12a56711be",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/GBufferInput.hlsl",
+    "sourceRevision": "0033b4ffd3b5ea4725ee4a94431f9334dd8c0bd46a9d1e4436c020789bd1deae",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/GBufferOutput.hlsl",
+    "sourceRevision": "3190a7802b20f850fa1cd6b47645f1e4634f635420cad048de313612a44b0868",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/GBufferOutputFormat.hlsl",
+    "sourceRevision": "aa34a7f02c27ba0739ef7bdbfddd564afcf4e4ec3774743e7a196c9c9aa94e96",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/GlobalIllumination.hlsl",
+    "sourceRevision": "a2eac4011d4ef041fda672e9f612993d1de035f46b882ecf4c3852ba40c87198",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Input.hlsl",
+    "sourceRevision": "72ce05de8f49228c6e62b376ef3165b57842fe73bd13420f0f822eb99b90c9dc",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/LODCrossFade.hlsl",
+    "sourceRevision": "95fea0c28560e3f0355cdc35c98558296fa870c154c916a3939945779ebd874e",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/LightCookie/LightCookie.hlsl",
+    "sourceRevision": "2660a79e9653764b9567923994fbc83d52b3ee16a574471e7c729293870bf772",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/LightCookie/LightCookieInput.hlsl",
+    "sourceRevision": "e548590c9f8bc05d04853a56830688fb4327ea4166673d76cfb3f2dee20cc962",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/LightCookie/LightCookieTypes.hlsl",
+    "sourceRevision": "e72f8359e539e3a69dcd3b772fe27587830e883a5e9c73b1a183c95d5f3562fb",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl",
+    "sourceRevision": "26ab9a1634466a75ea8926528e882e05f9960fbb60f5021c044decb03d156e38",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/MetaInput.hlsl",
+    "sourceRevision": "b136d7a0686fc53e872759a911cbcd318fa3bc97ee70a1f17e6e34dba9d95eae",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/MotionVectorsCommon.hlsl",
+    "sourceRevision": "43fcf3ed14dcd5e7d04b25b99f4d4f1887512e5791731d185bf4f12c0562f541",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/NormalReconstruction.hlsl",
+    "sourceRevision": "be884d0acc085ce7f243ddf70205ba17092977d24c6761cfbd885348eb69ec15",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ObjectMotionVectors.hlsl",
+    "sourceRevision": "3c7ce428bf2abe98c04959d6ae8ceaa3deace1017070ccdd478eff03161a5912",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Particles.hlsl",
+    "sourceRevision": "f5d77e692fa218d660024020bd49ecf3ce18acca1634811aa82b806d8c6664bc",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ParticlesInstancing.hlsl",
+    "sourceRevision": "b3793fba05368dc327a1372e1603012d9ce84b9f59192727527a53d9b7be62ad",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ProbeVolumeVariants.hlsl",
+    "sourceRevision": "1b4ba8c9eb65243b7559fec239993c1ffae362796d0310a150845355b42863e7",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RealtimeLights.hlsl",
+    "sourceRevision": "f7ec4ee1b2c8f5408a006adbbc18e6b1b84f2521c7d8a2a2fa528217d95e4d52",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RenderingLayers.hlsl",
+    "sourceRevision": "a7ba8c8f4504a3b2aee358787ad3612b5394095de5c44398ae05d29bb6fa24a9",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/SSAO.hlsl",
+    "sourceRevision": "2a1699a786c557ed8d8aebe64a9d727e3d099bd502cb85e6a47d197d09154bd9",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderGraphFunctions.hlsl",
+    "sourceRevision": "80aadfabf7a0f280dd38f1f3985a3e948a1758eec79eca1e13779ac3e4b7fb9d",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderTypes.cs.hlsl",
+    "sourceRevision": "f48eb2e6338da6e9aef933f1b42533b459308f728cde48dac8fa5cfa21f53bad",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.deprecated.hlsl",
+    "sourceRevision": "87423aab757b97e99f1b8905d7980c527aac8134efe2f9ca66cbecbddf5e0c24",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl",
+    "sourceRevision": "7e94d1ecc249a2da93ffdad4033071b1bf8f52484d390cb18c3b1d921e52e206",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.deprecated.hlsl",
+    "sourceRevision": "3294bf6448a0724a251634502ebe135e1e2b8b4e2e31e423cc2c3cd5979d82b8",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl",
+    "sourceRevision": "41dbe5965ef3f3cd6e7fc8f6625081bdde9b3752571b9fd2b7a8eca70abba4b0",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/SixWayLighting.hlsl",
+    "sourceRevision": "efbbf4d74db76517874600117e153c433565c98e6c89fd563311f572754532cb",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/SurfaceData.hlsl",
+    "sourceRevision": "789c20cdfaa4f9578770e999d75adec5dbd337d93d5718056013636ed19af039",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/SurfaceInput.hlsl",
+    "sourceRevision": "245362e43921bbd9bb8a346f88636c8d93e1f3e0e2322082247543edd38c12ef",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/UnityGBuffer.deprecated.hlsl",
+    "sourceRevision": "8633436d18b41dc47c76f246dbdad1a7dc57d33144291219923beb4bc7c79661",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/UnityGBuffer.hlsl",
+    "sourceRevision": "c4854337c62dcdbb5890aaf3c4bac2952cfb9e9b4a5032ca9756044192e7241f",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/UnityInput.hlsl",
+    "sourceRevision": "c288984300ba0866217aae4b2e0b5b6363ad5d0bb81423a2ba27f26cd134f9c9",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/UnityTypes.hlsl",
+    "sourceRevision": "c63be00e04bf36eb4455df64f722f0423979005ff0c3b78f2599ca92ca0a9140",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/UniversalDOTSInstancing.hlsl",
+    "sourceRevision": "5209dabe14e13ea9f0e8596dbd85802ba46a881fe7c049fb1609df1c82c539fe",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/UniversalMetaPass.hlsl",
+    "sourceRevision": "a95a0a8e5edfe1c27235f421711bc3025cb0ab7bacd9676b88851bb403b68cc1",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Unlit.hlsl",
+    "sourceRevision": "acc3485ba8bef1432f58a86b6292a6270f7bdb902ee378173eb5810dd8783035",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  },
+  {
+    "path": "Packages/com.unity.render-pipelines.universal/ShaderLibrary/VisualEffectVertex.hlsl",
+    "sourceRevision": "33cdb58bb7d17a93f0a7d6ad31c5cf065cc2703a2f2966e3d6fd7d3c935a1999",
+    "kind": "hlsl",
+    "package": "com.unity.render-pipelines.universal"
+  }
+]
