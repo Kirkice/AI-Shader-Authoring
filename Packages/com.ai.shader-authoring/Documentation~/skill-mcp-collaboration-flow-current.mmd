@@ -1,0 +1,42 @@
+flowchart TB
+    U([用户需求]) --> P
+    P --> G{前置条件<br/>能力 · 授权 · 环境}
+    G -->|通过| C
+    G -->|不足| B([受阻：说明缺失条件])
+
+    subgraph P[01 规划]
+        direction LR
+        P1[主 Skill<br/>解析需求与验收] --> P2[知识库子 Skill<br/>读取项目事实]
+        P2 --> P3[主 Skill<br/>生成方案与 codePlan]
+    end
+
+    subgraph C[02 生成与编译]
+        direction LR
+        C1[Shader Authoring<br/>子 Skill] --> C2[MCP<br/>写入 Shader / 材质]
+        C2 --> C3[MCP<br/>刷新 · 编译 · 诊断]
+        C3 --> C4[Markup GUI 子 Skill<br/>组织 Inspector]
+    end
+
+    subgraph V[03 验证与性能]
+        direction LR
+        V1[视觉验收子 Skill] --> V2[MCP<br/>真实材质 · 固定场景 · 截图]
+        V2 --> V3[性能验收子 Skill] --> V4[MCP<br/>预算 · GLES · Mali]
+    end
+
+    subgraph D[04 结论与交付]
+        direction LR
+        D1[主 Skill<br/>汇总证据与验收] --> D2([交付<br/>资产 · 报告 · 证据])
+    end
+
+    C --> V
+    V --> D
+    D1 -->|需修订| P3
+
+    classDef skill fill:#F3E8FF,stroke:#9B5DE5,color:#3B1464,stroke-width:2px
+    classDef mcp fill:#E0F7FA,stroke:#00A6C7,color:#063A47,stroke-width:2px
+    classDef result fill:#E8F8F0,stroke:#20A464,color:#0B5130,stroke-width:2px
+    classDef risk fill:#FFF0F2,stroke:#E64A6A,color:#7C1027,stroke-width:2px
+    class P1,P2,P3,C1,C4,V1,V3,D1 skill
+    class C2,C3,V2,V4 mcp
+    class U,D2 result
+    class B,G risk

@@ -1,0 +1,15 @@
+<h1>Skill 与 MCP 协同流程</h1>
+<p>按“规划 → 生成 → 验证 → 交付”四阶段闭环执行：主 Skill 负责编排和验收，子 Skill 完成领域工作，MCP 在授权边界内操作 Unity Editor 并返回可复查证据。</p>
+<table>
+  <tr><th>阶段</th><th>Skill / 子 Skill 职责</th><th>MCP 返回的关键证据</th></tr>
+  <tr><td><b>01　规划与门禁</b></td><td>主 Skill 解析需求和验收标准；知识库子 Skill 读取项目事实；主 Skill 形成方案与 codePlan。</td><td>渲染管线、项目能力、风险与前置条件。</td></tr>
+  <tr><td><b>02　生成与编译</b></td><td>Shader Authoring 子 Skill 生成资产；Markup GUI 子 Skill 组织 Inspector。</td><td>资产 revision、编译结果与 Console 诊断。</td></tr>
+  <tr><td><b>03　验证与性能</b></td><td>视觉验收子 Skill 与性能验收子 Skill 分别执行证据化验证。</td><td>真实材质绑定、固定场景截图、静态预算、GLES / Mali 报告。</td></tr>
+  <tr><td><b>04　结论与交付</b></td><td>主 Skill 汇总证据，输出通过、需修订或受阻的验收结论。</td><td>资产、报告、截图及 revision 关联证据。</td></tr>
+</table>
+<callout emoji="🔁" background-color="light-purple" border-color="purple" text-color="purple">
+  <p><b>闭环规则</b>　若验收需修订，则返回“规划与门禁”重新生成方案；若能力、授权或环境条件不足，则明确标记受阻并说明所需条件，不以不完整证据宣称通过。</p>
+</callout>
+<callout emoji="🛡️" background-color="light-green" border-color="green" text-color="green">
+  <p><b>职责分界</b>　Skill 决定“做什么、按什么标准验收”；MCP 只在授权和参数约束下执行 Unity Editor 操作，并返回 revision、诊断、绑定信息、截图与性能报告等可复查证据。</p>
+</callout>

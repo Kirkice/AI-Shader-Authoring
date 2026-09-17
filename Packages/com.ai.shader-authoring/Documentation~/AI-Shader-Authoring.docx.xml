@@ -1,0 +1,89 @@
+<title>AI-Shader-Authoring</title>
+<p align="center"><span text-color="purple"><b>AI · SHADER · AUTHORING</b></span></p>
+<p align="center"><b>Unity 智能材质创作与验证工具包</b></p>
+<p align="center"><span text-color="gray">从自然语言意图到可编译、可验证、可追溯的 Shader 交付</span></p>
+<hr/>
+<callout emoji="💡" background-color="light-purple" border-color="purple" text-color="purple">
+  <p><b>产品定位</b>　面向 Unity Shader 的 AI Shader Authoring 工具包。它将自然语言材质需求转化为 Shader、材质资产和验收证据，并在 Unity Editor 内提供受控 MCP 工具链、项目知识检索、视觉验证与性能分析能力；当前以 URP PBR 材质工作流作为首个完整落地与验证范式，可通过渲染管线适配扩展至 Built-in、HDRP 与自定义 SRP。</p>
+</callout>
+<h1>能力全景</h1>
+<grid>
+  <column width-ratio="0.5">
+    <h2>创作</h2>
+    <p><b>Shader 生成</b><br/>根据当前渲染管线与项目实现生成可编译 Shader，并输出可配置的 Properties 与材质资产。</p>
+    <p><b>Inspector 编排</b><br/>以 MarkupShaderGUI 将参数组织为语义化、可折叠的材质面板。</p>
+    <p><b>知识库检索</b><br/>从项目渲染环境、Shader Library 和既有样例中提取可复用的实现事实。</p>
+  </column>
+  <column width-ratio="0.5">
+    <h2>验证</h2>
+    <p><b>编译与诊断</b><br/>以 revision 保护写入，驱动 Unity 编译并回收 Console 与编译器诊断。</p>
+    <p><b>视觉验收</b><br/>在固定场景中绑定真实生成材质，回读关键证据并采集截图。</p>
+    <p><b>性能验收</b><br/>结合静态预算、GLES3x 变体导出和 Mali Offline Compiler 进行策略评级。</p>
+  </column>
+</grid>
+<h1>核心能力</h1>
+<h2>01　渲染管线感知的材质 Shader 生成</h2>
+<p>生成器不强依赖单一渲染管线：它会读取当前项目的渲染管线和 Shader 实现事实，并据此生成可编译的材质 Shader。当前以 URP PBR 工作流作为首个完整落地范式，支持金属度、平滑度、法线、透明裁剪与发光等基础材质能力；效果可按明确计算顺序组合，包括菲涅尔边缘光、噪声溶解、显式 Cubemap 反射与 Mask 控制的呼吸自发光。</p>
+<table>
+  <thead><tr><th background-color="light-purple">效果模块</th><th background-color="light-purple">实现关注点</th><th background-color="light-purple">交付结果</th></tr></thead>
+  <tbody>
+    <tr><td><b>管线适配</b></td><td>读取当前 Render Pipeline、项目 Shader 与 Library 实现</td><td>按项目上下文生成</td></tr>
+    <tr><td><b>URP PBR 范式</b></td><td>SurfaceData / InputData 与 URP 光照流程</td><td>当前完整落地能力</td></tr>
+    <tr><td><b>特效叠加</b></td><td>Fresnel、Dissolve、Cubemap、Pulse Mask</td><td>可组合 HLSL 逻辑</td></tr>
+    <tr><td><b>材质资产</b></td><td>真实属性、贴图和资源绑定</td><td>可验证 .mat 资产</td></tr>
+  </tbody>
+</table>
+<h2>02　材质 Inspector 结构化编排</h2>
+<p>集成 <b>MarkupShaderGUI</b>，为 Properties 写入分组、标题、开关与枚举标记，并通过 CustomEditor 呈现可折叠的材质参数面板。基础设置、反射、溶解、自发光和边缘光等参数按美术调参语义归类，降低理解和操作成本。</p>
+<h2>03　项目专用 Shader 知识库</h2>
+<p>扫描 Unity 当前渲染环境、Shader Library、项目 Shader 样例及工程实现习惯，建立持久化 Shader Knowledge Base。知识库覆盖 Built-in、URP、HDRP 与自定义 SRP 可见的工程事实，并输出函数卡片、能力目录、包含关系和样例检索结果，使生成逻辑优先复用项目事实，而非脱离工程上下文编写。</p>
+<h2>04　受控 Unity MCP 工具链</h2>
+<p>Unity Editor 使用 <b>MCP Client ⇄ stdio Server ⇄ WebSocket ⇄ Unity Editor</b> 架构与 Agent 协作。工具层覆盖 Editor 状态、日志、异步 Job、资产 revision、Shader 结构、知识库、编译诊断、验证场景、截图采集和性能分析。</p>
+<callout emoji="📌" background-color="light-blue" border-color="blue" text-color="blue">
+  <p><b>写入安全边界</b>　生成资产限定在 Assets/AIShader/Generated；每次写入需携带 codePlan、允许文件列表和 runId。Unity 侧负责结构性授权校验，Agent/LLM 侧负责授权发起与流程编排。</p>
+</callout>
+<h1>关键技术实现</h1>
+<h2>Unity Editor 模块</h2>
+<table>
+  <thead><tr><th background-color="light-gray">模块</th><th background-color="light-gray">职责</th></tr></thead>
+  <tbody>
+    <tr><td><b>UnityMcpConnection</b></td><td>维护 WebSocket 连接、主线程消息分发、动态 C# 指令执行与 Editor 状态序列化。</td></tr>
+    <tr><td><b>UnityMcpShaderTools</b></td><td>分发结构化 MCP 工具，管理异步 Job、生成资产授权、知识库构建、编译、验证与 Console 诊断。</td></tr>
+    <tr><td><b>CompiledGlesVariantExporter</b></td><td>经 UnityEditor.ShaderUtil 导出 GLES 编译文本，兼容 Unity 6 的 OpenCompiledShader 重载。</td></tr>
+    <tr><td><b>ShaderPerformanceAnalyzer</b></td><td>结合静态启发式与 Mali Offline Compiler，输出策略预算、阶段指标与归档报告。</td></tr>
+    <tr><td><b>UnityMcpWindow</b></td><td>以 JellyFish 风格 Dashboard 呈现 18 项 MCP 工具、运行状态、参数说明与授权标识。</td></tr>
+  </tbody>
+</table>
+<h2>Skill 工作流</h2>
+<grid>
+  <column width-ratio="0.5">
+    <p><b>shader-authoring-agent</b><br/><span text-color="gray">需求规范化、Shader 生成、真实材质绑定、固定场景验收与证据归档。</span></p>
+    <p><b>markup-shader-gui-authoring</b><br/><span text-color="gray">Properties 标记分析与 MarkupShaderGUI 的安全写入。</span></p>
+  </column>
+  <column width-ratio="0.5">
+    <p><b>shader-knowledge-base-builder</b><br/><span text-color="gray">项目 Shader 知识库的构建、刷新、验证与查询。</span></p>
+    <p><b>shader-performance-acceptance</b><br/><span text-color="gray">静态预算、GLES3x 导出、Mali 分析、结果归档与 Inspector 预警。</span></p>
+  </column>
+</grid>
+<h1>验证与交付体系</h1>
+<h2>固定场景视觉验收</h2>
+<p>视觉验收固定使用 <b>Packages/com.ai.shader-authoring/Tests/AI Shader Authoring.unity</b> 与 <b>AIShader_Sphere</b>。验收必须绑定本轮真实生成的材质资产，并回读材质路径、实例、Shader、revision、槽位及效果相关属性/贴图快照后再截图。</p>
+<callout emoji="❗" background-color="light-red" border-color="red" text-color="red">
+  <p><b>不可接受的证据</b>　复制旧材质后仅替换 Shader，不能证明生成材质的真实参数与贴图生效，因此不得作为视觉验收结论的依据。</p>
+</callout>
+<h2>性能验收</h2>
+<p>性能验收默认非阻断，输出纹理采样数、分支数、关键字数量、顶点/片元估算成本和策略预算评级。系统可从 Unity 编译产物导出 GLES3x GLSL 变体，再调用 ARM Mali Offline Compiler 获得目标 GPU 的阶段指标。</p>
+<table>
+  <thead><tr><th background-color="light-green">验收层</th><th background-color="light-green">当前能力</th><th background-color="light-green">约束</th></tr></thead>
+  <tbody>
+    <tr><td><b>静态分析</b></td><td>成本估算与预算评级</td><td>始终可执行</td></tr>
+    <tr><td><b>真实 Mali-G78</b></td><td>导出 GLES3x 并运行 malioc</td><td>依赖 Unity Android Build Support</td></tr>
+    <tr><td><b>结论表达</b></td><td>通过、需修订、受阻</td><td>不以 HLSL 或 D3D 输出冒充 Mali 输入</td></tr>
+  </tbody>
+</table>
+<h1>工程边界</h1>
+<p>首期聚焦 Unity <b>材质 Shader</b>；复杂特效与后处理不在自动生成范围内。框架不锁定 URP，但 URP 是当前已完成端到端生成与验证的首个成熟范式；Built-in、HDRP 与自定义 SRP 需要依据各自的 Shader Library、材质接口和编译结果补充适配策略。视觉验收仅证明已绑定真实材质及其已赋值资源：若 Cubemap、噪声贴图或 Mask 尚未赋值，对应艺术效果需在补齐资源后重新验证。真实 Android/Mali 数据受 Android Build Support 与目标平台编译产物可用性约束。</p>
+<h1>交付证据</h1>
+<p>每次运行可关联生成资产 revision、代码计划、编译诊断、验证会话、截图和性能报告。验收结论明确区分 <span text-color="green"><b>通过</b></span>、<span text-color="orange"><b>需修订</b></span> 与 <span text-color="red"><b>受阻</b></span>，确保交付结论与实际证据一致。</p>
+<hr/>
+<p align="center"><span text-color="gray">AI-Shader-Authoring · Unity Shader · Evidence-driven Delivery</span></p>

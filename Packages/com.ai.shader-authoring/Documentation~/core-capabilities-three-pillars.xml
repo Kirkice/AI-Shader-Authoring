@@ -1,0 +1,43 @@
+<p>核心能力聚焦三条可复查的主线：先把项目事实沉淀为可检索缓存，再把自然语言需求转化为跨管线语义，最后在授权边界内生成、编译并以真实证据验收。</p>
+<h2>01　项目专用知识库：生成、检索与缓存</h2>
+<p>每个材质任务先检查知识库的版本、工程指纹与 fresh 状态。缺失或失效时，由知识库构建流程扫描当前渲染环境、Shader Library、Assets / Packages 样例与项目约定，并持久化为可查询的工程事实；状态为 fresh 后才进入生成链路。</p>
+<table>
+  <colgroup><col width="170"/><col width="302"/><col width="278"/></colgroup>
+  <thead><tr><th background-color="rgb(246,241,254)"><p><b>阶段</b></p></th><th background-color="rgb(246,241,254)"><p><b>生成或查询的内容</b></p></th><th background-color="rgb(246,241,254)"><p><b>缓存与决策价值</b></p></th></tr></thead>
+  <tbody>
+    <tr><td><p><b>构建与刷新</b></p></td><td><p>采集 Render Pipeline、Renderer、Shader Library、函数卡片、能力目录、项目 Shader 样例与实现风格。</p></td><td><p>将一次工程扫描转为可持久化的知识库版本和工程指纹，而不是每轮从零猜测。</p></td></tr>
+    <tr><td><p><b>任务门禁</b></p></td><td><p>检查知识库是否存在、是否 fresh、指纹是否匹配；仅 fresh 可继续。</p></td><td><p>工程变化会触发刷新；构建失败或证据不足时明确 BLOCKED。</p></td></tr>
+    <tr><td><p><b>按需检索</b></p></td><td><p>为 PBR、Alpha 路径与每个效果查询相似 Shader、能力证据、工程约定和 Library 函数。</p></td><td><p>优先复用项目事实；能力 unknown 不会被误当成已支持能力。</p></td></tr>
+  </tbody>
+</table>
+<h2>02　自然语言 → 通用材质语义：Material Intent 与 Rendering Semantic Graph</h2>
+<p>系统不直接把需求翻译为某条管线的 HLSL。先以 <b>Material Intent</b> 把“要做成什么材质”规范为机器真值，再以 <b>Rendering Semantic Graph</b> 表达“如何计算、依赖与合成”。这两层不绑定 URP、HDRP、Built-in、具体 Include、函数名或 Unity API，是跨管线复用的核心。</p>
+<table>
+  <colgroup><col width="170"/><col width="302"/><col width="278"/></colgroup>
+  <thead><tr><th background-color="rgb(246,241,254)"><p><b>语义层</b></p></th><th background-color="rgb(246,241,254)"><p><b>保存的机器真值</b></p></th><th background-color="rgb(246,241,254)"><p><b>通用性保证</b></p></th></tr></thead>
+  <tbody>
+    <tr><td><p><b>Material Intent</b><br/>材质意图</p></td><td><p>目标、表面参数、贴图语义与通道、Alpha、效果层、假设、约束与可见验收目标。</p></td><td><p>把“金属、溶解、呼吸发光”等自然语言变为与管线无关的材质需求合同。</p></td></tr>
+    <tr><td><p><b>Rendering Semantic Graph</b><br/>渲染语义图</p></td><td><p>输入 / 表面 / 光照 / 发光 / Alpha / 输出节点，及其依赖、读写语义槽位、阶段、能力、回退与调试契约。</p></td><td><p>以 <code>surface.baseColor</code>、<code>emission.additive</code> 等槽位替代变量名；多效果冲突必须显式组合。</p></td></tr>
+    <tr><td><p><b>效果顺序确认</b></p></td><td><p>多个效果层声明 modulationTargets 与 compositionOrder；默认排序需在生成前向用户展示并确认。</p></td><td><p>避免靠隐式代码顺序决定结果，使溶解、Pulse、Fresnel 的叠加可解释、可调整、可验证。</p></td></tr>
+  </tbody>
+</table>
+<pre lang="text" caption="语义转换链"><code>自然语言材质需求
+      ▼
+Material Intent（需求合同）
+      ▼
+Rendering Semantic Graph（计算、依赖与合成）
+      ▼
+Shader Code Plan（当前项目与管线的落地映射）</code></pre>
+<h2>03　Shader Code 实现与证据驱动验收</h2>
+<p>Capability Resolver 根据当前项目管线、知识库和语义图生成 Shader Code Plan；只有获得明确编码授权后，MCP 才能在白名单内写入资产、刷新编译、读取诊断并执行验证。生成不是终点，revision 绑定的真实材质、固定场景和性能结果共同决定 PASS、REVISE 或 BLOCKED。</p>
+<table>
+  <colgroup><col width="170"/><col width="302"/><col width="278"/></colgroup>
+  <thead><tr><th background-color="rgb(246,241,254)"><p><b>执行环节</b></p></th><th background-color="rgb(246,241,254)"><p><b>实际动作</b></p></th><th background-color="rgb(246,241,254)"><p><b>证据与边界</b></p></th></tr></thead>
+  <tbody>
+    <tr><td><p><b>Code Plan 与授权</b></p></td><td><p>映射属性、Pass、关键字、Shader Library、允许文件与验证目标；展示确认单并取得明确授权。</p></td><td><p>写入必须携带 codePlan、runId 和白名单路径；无授权或越界写入会被拒绝。</p></td></tr>
+    <tr><td><p><b>受限生成与编译</b></p></td><td><p>写入生成 Shader / .mat，刷新 Unity，读取编译器与 Console；失败仅在白名单内最多修复三轮。</p></td><td><p>回传资产 revision、诊断、平台与时间信息，确保代码与结论可追溯。</p></td></tr>
+    <tr><td><p><b>视觉与性能验收</b></p></td><td><p>固定场景绑定本轮真实生成材质，回读属性/贴图并截图；执行静态预算、GLES3x 与 Mali 流程。</p></td><td><p>复制旧材质后只替换 Shader 的证据无效；缺少 Android / Mali 环境时必须标记 BLOCKED。</p></td></tr>
+    <tr><td><p><b>交付结论</b></p></td><td><p>汇总编译、Inspector、画面和性能结果。</p></td><td><p>结论严格分为 PASS、REVISE、BLOCKED，并关联版本化证据。</p></td></tr>
+  </tbody>
+</table>
+<callout emoji="📌" background-color="rgb(240,244,255)" border-color="rgb(130,167,252)" text-color="rgb(36,91,219)"><p><b>定位</b>　URP PBR 是当前首个完成端到端实现与验证的适配器；三条主线本身面向 Built-in、URP、HDRP 与自定义 SRP 的项目事实、语义建模和受控交付，不把系统锁定在单一管线。</p></callout>

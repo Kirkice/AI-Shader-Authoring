@@ -1,0 +1,64 @@
+<callout emoji="✦" background-color="light-blue" border-color="blue" text-color="blue">
+  <p><b>让生成结果可编辑、可衡量、可落地</b>　配套能力围绕「材质编辑体验」与「性能风险控制」展开：自动把参数组织成可读 Inspector，并以静态预算、GLES3x 编译产物和 Mali Offline Compiler 形成分层、可追溯的性能结论。</p>
+</callout>
+<grid>
+  <column width-ratio="0.333333">
+    <callout emoji="01" background-color="light-purple" border-color="purple" text-color="purple"><p><b>Inspector 编排</b><br/>解析 · 标注 · 安全回写</p></callout>
+  </column>
+  <column width-ratio="0.333333">
+    <callout emoji="02" background-color="light-blue" border-color="blue" text-color="blue"><p><b>性能验收</b><br/>预算 · 分级 · 归档</p></callout>
+  </column>
+  <column width-ratio="0.333334">
+    <callout emoji="03" background-color="light-green" border-color="green" text-color="green"><p><b>Mali 离线分析</b><br/>GLES3x · 指标 · 证据</p></callout>
+  </column>
+</grid>
+<h2>4.1　ShaderGUI 自动标注注释生成</h2>
+<p><span text-color="rgb(143,149,158)">MARKUP SHADER GUI · STRUCTURE WITHOUT SEMANTIC DRIFT</span></p>
+<p><b>MarkupShaderGUI</b> 自动分析 Shader 的 <code>Properties</code> 区域，为材质参数生成可被 Inspector 识别的结构化标记：标题、折叠分组、开关与枚举。它让艺术家看到的是按工作流组织的参数面板，而不是无序属性列表。</p>
+<table>
+  <colgroup><col width="156"/><col width="326"/><col width="268"/></colgroup>
+  <thead><tr><th background-color="light-purple"><p><b>处理阶段</b></p></th><th background-color="light-purple"><p><b>自动化结果</b></p></th><th background-color="light-purple"><p><b>安全边界</b></p></th></tr></thead>
+  <tbody>
+    <tr><td><p><b>属性解析</b></p></td><td><p>识别纹理、颜色、数值、开关与枚举属性，并结合命名语义归入 Surface、Alpha、Emission、Effects 等编辑分区。</p></td><td><p>读取目标 Shader 的真实属性定义，不依赖猜测或另建一份参数描述。</p></td></tr>
+    <tr><td><p><b>标记生成</b></p></td><td><p>在 <code>Properties</code> 中写入分组、标题、开关和枚举注释；按策略应用 <code>CustomEditor</code>。</p></td><td><p>仅写注释标记与 Editor 声明，不改 HLSL、Pass、关键字、默认值或渲染状态。</p></td></tr>
+    <tr><td><p><b>复编译验证</b></p></td><td><p>刷新 Unity 并读取编译诊断，确认结构化 Inspector 与 Shader 本体可共同工作。</p></td><td><p>注释生成失败时可定向修复；材质渲染语义始终以原 Shader 为准。</p></td></tr>
+  </tbody>
+</table>
+<callout emoji="◈" background-color="light-purple" border-color="purple" text-color="purple"><p><b>设计原则</b>　编排改善的是“如何编辑”，不改变“如何渲染”。这使 ShaderGUI 自动化可以作为生成链路中的低风险增强步骤，而非另一个会改写材质语义的生成器。</p></callout>
+<h2>4.2　性能验收维度与分层结论</h2>
+<p><span text-color="rgb(143,149,158)">PERFORMANCE ACCEPTANCE · FORECAST / EVIDENCE / DECISION</span></p>
+<p>性能验收不以单一分数替代判断，而是把 Shader 的采样、分支、数学计算、透明路径和目标平台证据拆开评估。结果被写入报告与 Inspector 摘要，用于暴露风险、辅助取舍；它不会阻断视觉验收或正常交付链路。</p>
+<table>
+  <colgroup><col width="156"/><col width="326"/><col width="268"/></colgroup>
+  <thead><tr><th background-color="light-blue"><p><b>验收维度</b></p></th><th background-color="light-blue"><p><b>观察内容</b></p></th><th background-color="light-blue"><p><b>结论用途</b></p></th></tr></thead>
+  <tbody>
+    <tr><td><p><b>静态成本预测</b></p></td><td><p>纹理采样数、分支、循环、透明与 Alpha Clip、三角函数及高代价数学操作。</p></td><td><p>在目标平台编译证据不可用时，仍提供可解释的基础预算与风险提示。</p></td></tr>
+    <tr><td><p><b>变体与平台证据</b></p></td><td><p>按关键字与 Pass 区分变体；记录 Unity 平台、编译状态、GLES3x 导出状态与诊断。</p></td><td><p>避免用桌面 HLSL 或错误平台产物替代移动端结论。</p></td></tr>
+    <tr><td><p><b>预算评级</b></p></td><td><p>将预测值与项目策略、目标档位和设备预算比较，输出可读的评级、原因与建议。</p></td><td><p>使“可用、需优化、证据不足”成为可追溯的产品决策，而非主观印象。</p></td></tr>
+  </tbody>
+</table>
+<grid>
+  <column width-ratio="0.333333"><callout emoji="LOW" background-color="light-green" border-color="green" text-color="green"><p><b>预算健康</b><br/>成本处于策略范围内。</p></callout></column>
+  <column width-ratio="0.333333"><callout emoji="WATCH" background-color="light-yellow" border-color="yellow" text-color="orange"><p><b>需要关注</b><br/>风险项已定位，可定向优化。</p></callout></column>
+  <column width-ratio="0.333334"><callout emoji="EVIDENCE" background-color="light-red" border-color="red" text-color="red"><p><b>证据不足</b><br/>不把缺失平台数据伪装为通过。</p></callout></column>
+</grid>
+<h2>4.3　Mali Offline Compiler 离线编译性能验收</h2>
+<p><span text-color="rgb(143,149,158)">MALIOC · REAL GLES3X ARTIFACT · TARGET GPU METRICS</span></p>
+<p>当 Unity 已产生目标平台的 GLES3x 编译产物、且提供有效的 <b>Mali Offline Compiler</b> 路径时，系统将真实 GLSL 变体交给 <code>malioc</code>，按指定 Mali GPU（如 Mali-G78）解析 Vertex / Fragment 阶段指标，并将结果与静态预测并列归档。</p>
+<table>
+  <colgroup><col width="156"/><col width="326"/><col width="268"/></colgroup>
+  <thead><tr><th background-color="light-green"><p><b>验收步骤</b></p></th><th background-color="light-green"><p><b>真实离线编译证据</b></p></th><th background-color="light-green"><p><b>诚实性约束</b></p></th></tr></thead>
+  <tbody>
+    <tr><td><p><b>GLES3x 导出</b></p></td><td><p>从 Unity 目标平台的已编译 Shader 中提取实际 GLES3x GLSL 变体、关键字与阶段源代码。</p></td><td><p>仅接受新鲜、可验证的 GLES3x 产物；桌面平台输出不能冒充移动端编译证据。</p></td></tr>
+    <tr><td><p><b>Mali 指标解析</b></p></td><td><p>调用 <code>malioc</code> 分析 Vertex / Fragment，读取周期、管线组件与编译诊断等目标 GPU 指标。</p></td><td><p>分析目标、编译器路径、变体与原始输出进入报告，支持复核与横向比较。</p></td></tr>
+    <tr><td><p><b>策略评估</b></p></td><td><p>以最重片元路径和目标 GPU 预算进行评级，并与纹理采样、分支等静态风险联合解释。</p></td><td><p>Android Build Support、GLES3x 产物或编译器任一缺失时明确标记 <b>BLOCKED</b>，保留静态结论但不伪造 Mali 结论。</p></td></tr>
+  </tbody>
+</table>
+<pre lang="text" caption="性能证据阶梯"><code>Shader Source
+    ↓  静态扫描
+Static Forecast                 · 始终可用的基础风险判断
+    ↓  Unity Android / GLES3x 编译产物
+Compiled GLSL Variants          · 目标平台真实输入
+    ↓  Mali Offline Compiler
+Mali GPU Metrics                · 指定设备架构的离线性能证据</code></pre>
+<callout emoji="✓" background-color="light-green" border-color="green" text-color="green"><p><b>非阻断式验收</b>　性能链路的价值是让风险和证据透明化：具备条件时给出 Mali 目标 GPU 指标；条件缺失时准确说明阻断原因，并继续交付静态预测与视觉验收结果。</p></callout>

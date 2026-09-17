@@ -1,0 +1,77 @@
+<h2>通用语义层：Material Intent 与 Rendering Semantic Graph</h2>
+<p>系统并不直接把自然语言翻译为某一条管线的 HLSL。它先构建两层与 Unity API、Include 文件和具体 Shader 路径解耦的中间表达：<b>Material Intent</b>定义“要做成什么材质”，<b>Rendering Semantic Graph</b>定义“这些语义如何计算、依赖与合成”。因此同一份需求可以先保持稳定的设计语义，再由不同渲染管线适配器落实为对应的 Shader 实现。</p>
+<table>
+  <colgroup><col width="175"/><col width="286"/><col width="289"/></colgroup>
+  <thead>
+    <tr>
+      <th background-color="rgb(246,241,254)"><p><b>语义层</b></p></th>
+      <th background-color="rgb(246,241,254)"><p><b>机器真值包含什么</b></p></th>
+      <th background-color="rgb(246,241,254)"><p><b>解决的通用性问题</b></p></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><p><b>Material Intent</b><br/>材质意图</p></td>
+      <td><p>目标对象、金属度-粗糙度工作流、表面参数、贴图语义与通道、Alpha 路径、效果层、假设、约束及验收目标。</p></td>
+      <td><p>把“金属、溶解、呼吸发光”等自然语言，规范为不依赖 URP / HDRP / Built-in 的材质需求合同。</p></td>
+    </tr>
+    <tr>
+      <td><p><b>Rendering Semantic Graph</b><br/>渲染语义图</p></td>
+      <td><p>输入、表面构建、光照、发光、Alpha、输出节点；节点依赖、读写语义槽位、生命周期阶段、能力要求、回退与调试契约。</p></td>
+      <td><p>把“如何计算和合成”从具体函数名、变量名、Include 与 API 中抽离，成为 Material Intent 到 Shader Code Plan 之间唯一计算真相。</p></td>
+    </tr>
+    <tr>
+      <td><p><b>Shader Code Plan</b><br/>管线落地计划</p></td>
+      <td><p>由能力解析器将语义图映射到当前项目已验证的 Shader Library、管线入口、属性、Pass、关键字与允许写入路径。</p></td>
+      <td><p>同一语义图可按项目事实适配不同管线；能力未知时保留不确定性并阻断，而不是凭记忆生成不兼容代码。</p></td>
+    </tr>
+  </tbody>
+</table>
+<pre lang="text" caption="从需求到可验证 Shader 的语义链"><code>自然语言需求
+      │  规范化：默认值、贴图语义、效果层、约束、验收目标
+      ▼
+Material Intent
+      │  展开：数据依赖、阶段、读写槽位、冲突消解、能力要求
+      ▼
+Rendering Semantic Graph
+      │  解析：匹配当前 Pipeline、Shader Library、项目样本与能力证据
+      ▼
+Shader Code Plan
+      │  授权后生成、编译、验证
+      ▼
+当前管线的 Shader / .mat / 可复查证据</code></pre>
+<table>
+  <colgroup><col width="175"/><col width="286"/><col width="289"/></colgroup>
+  <thead>
+    <tr>
+      <th background-color="rgb(246,241,254)"><p><b>图内约束</b></p></th>
+      <th background-color="rgb(246,241,254)"><p><b>示例</b></p></th>
+      <th background-color="rgb(246,241,254)"><p><b>带来的确定性</b></p></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><p><b>语义槽位，而非变量名</b></p></td>
+      <td><p><code>surface.baseColor</code>、<code>emission.additive</code>、<code>alpha.coverage</code></p></td>
+      <td><p>图不绑定某个 HLSL 命名或 Unity API，管线适配器可以安全替换具体实现。</p></td>
+    </tr>
+    <tr>
+      <td><p><b>分阶段数据流</b></p></td>
+      <td><p>input → surface → lighting → emission / alpha → output；节点只能读取当前或更早阶段的语义。</p></td>
+      <td><p>避免效果跨阶段倒灌，确保计算顺序可检查。</p></td>
+    </tr>
+    <tr>
+      <td><p><b>显式冲突消解</b></p></td>
+      <td><p>Dissolve、Pulse、Fresnel 对同一发光或 Alpha 槽位的写入，必须经过 EffectEmissionCompose 或 EffectAlphaCompose。</p></td>
+      <td><p>多效果叠加不再依赖隐式代码顺序；组合规则可展示、确认和验证。</p></td>
+    </tr>
+    <tr>
+      <td><p><b>默认顺序确认</b></p></td>
+      <td><p>多层效果默认先处理 Dissolve 覆盖与裁剪，再合成边缘发光、Pulse 与 Fresnel。</p></td>
+      <td><p>默认值不会静默写入；用户可在生成前确认或调整效果合成顺序。</p></td>
+    </tr>
+  </tbody>
+</table>
+<callout emoji="🧩" background-color="rgb(240,244,255)" border-color="rgb(130,167,252)" text-color="rgb(36,91,219)">
+  <p><b>关键边界</b>　Material Intent 与 Rendering Semantic Graph 描述的是通用材质语义，而非“URP Shader 的另一种写法”。URP PBR 是当前第一个完整验证的落地适配器；未来接入 Built-in、HDRP 或自定义 SRP 时，优先复用这两层语义真值，只替换能力解析与代码生成映射。</p>
+</callout>

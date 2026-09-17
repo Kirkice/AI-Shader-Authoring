@@ -1,0 +1,96 @@
+<table>
+  <colgroup><col width="155"/><col width="330"/><col width="265"/></colgroup>
+  <thead>
+    <tr>
+      <th background-color="rgb(246,241,254)"><p><b>编排层</b></p></th>
+      <th background-color="rgb(246,241,254)"><p><b>具体做什么</b></p></th>
+      <th background-color="rgb(246,241,254)"><p><b>对美术与交付的价值</b></p></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><p><b>属性语义解析</b></p></td>
+      <td><p>读取 Shader 的 Properties，识别贴图、颜色、数值、开关与枚举等属性类型。</p></td>
+      <td><p>将技术属性转换为可理解的调参对象。</p></td>
+    </tr>
+    <tr>
+      <td><p><b>注释标记编排</b></p></td>
+      <td><p>仅在 Properties 内写入 Group、Title、Toggle、Enum 等 Markup 标记，定义分组与控件表现。</p></td>
+      <td><p>把分散参数组织为“基础设置 / 反射 / 溶解 / 发光”等可折叠区域。</p></td>
+    </tr>
+    <tr>
+      <td><p><b>Inspector 呈现</b></p></td>
+      <td><p>由 MarkupShaderGUI 和 CustomEditor 将标记渲染为结构化材质面板。</p></td>
+      <td><p>降低误操作与培训成本，便于美术直接调参。</p></td>
+    </tr>
+    <tr>
+      <td><p><b>安全边界</b></p></td>
+      <td><p>不修改 HLSL、Pass、关键字、默认值或渲染状态。</p></td>
+      <td><p>改善 Inspector 的同时，不改变 Shader 渲染语义。</p></td>
+    </tr>
+  </tbody>
+</table>
+<table>
+  <colgroup><col width="155"/><col width="330"/><col width="265"/></colgroup>
+  <thead>
+    <tr>
+      <th background-color="rgb(246,241,254)"><p><b>知识层</b></p></th>
+      <th background-color="rgb(246,241,254)"><p><b>沉淀的项目事实</b></p></th>
+      <th background-color="rgb(246,241,254)"><p><b>生成时如何使用</b></p></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><p><b>渲染环境</b></p></td>
+      <td><p>当前 Render Pipeline、Pipeline Asset、Renderer 与项目配置。</p></td>
+      <td><p>先判断可用的渲染路径，避免套用不匹配的管线写法。</p></td>
+    </tr>
+    <tr>
+      <td><p><b>Shader Library</b></p></td>
+      <td><p>Include 文件、函数声明、函数卡片与推荐引用关系。</p></td>
+      <td><p>优先复用项目可见的库函数与约定。</p></td>
+    </tr>
+    <tr>
+      <td><p><b>项目样本与风格</b></p></td>
+      <td><p>Assets / Packages 中的 Shader 样例、命名、属性布局和实现模式。</p></td>
+      <td><p>让新 Shader 在目录、命名与技术结构上保持一致。</p></td>
+    </tr>
+    <tr>
+      <td><p><b>能力目录与版本</b></p></td>
+      <td><p>能力证据、包含关系、检索结果及知识库 fresh 状态。</p></td>
+      <td><p>将“能否实现”的判断建立在可复查的项目事实之上。</p></td>
+    </tr>
+  </tbody>
+</table>
+<table>
+  <colgroup><col width="155"/><col width="330"/><col width="265"/></colgroup>
+  <thead>
+    <tr>
+      <th background-color="rgb(246,241,254)"><p><b>受控环节</b></p></th>
+      <th background-color="rgb(246,241,254)"><p><b>MCP 实际执行</b></p></th>
+      <th background-color="rgb(246,241,254)"><p><b>回传的证据 / 约束</b></p></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><p><b>状态与结构读取</b></p></td>
+      <td><p>读取 Editor 状态、资产 revision、Shader 结构与知识库状态。</p></td>
+      <td><p>让计划建立在当前工程状态，而不是假设之上。</p></td>
+    </tr>
+    <tr>
+      <td><p><b>资产受限写入</b></p></td>
+      <td><p>仅在已授权的 codePlan、runId 与白名单路径范围内写入生成资产。</p></td>
+      <td><p>记录 revision，拒绝越权路径和无授权修改。</p></td>
+    </tr>
+    <tr>
+      <td><p><b>编译与诊断</b></p></td>
+      <td><p>刷新资产、驱动 Unity 编译、读取 Compiler 与 Console 诊断。</p></td>
+      <td><p>返回可定位的错误、警告、平台与时间证据。</p></td>
+    </tr>
+    <tr>
+      <td><p><b>验证与性能</b></p></td>
+      <td><p>准备固定验证场景、绑定真实材质、采集截图，并执行 GLES / Mali 性能流程。</p></td>
+      <td><p>回传材质绑定、截图统计、性能报告；环境缺失时明确 BLOCKED。</p></td>
+    </tr>
+  </tbody>
+</table>

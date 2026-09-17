@@ -20,6 +20,7 @@ namespace MarkupShaderGUI
 
         private static string cachedPath;
         private static string cachedRevision;
+        private static long cachedSummaryWriteTicks;
         private static Summary cachedSummary;
 
         public static void Draw(Shader shader)
@@ -116,13 +117,15 @@ namespace MarkupShaderGUI
                 return null;
 
             string revision = Hash(File.ReadAllText(shaderPath));
-            if (cachedSummary != null && cachedPath == shaderPath && cachedRevision == revision)
+            string fileName = SafeName(shaderPath) + "-" + revision + ".json";
+            string summaryPath = SummaryRoot + fileName;
+            long summaryWriteTicks = File.Exists(summaryPath) ? File.GetLastWriteTimeUtc(summaryPath).Ticks : 0L;
+            if (cachedPath == shaderPath && cachedRevision == revision && cachedSummaryWriteTicks == summaryWriteTicks)
                 return cachedSummary;
 
             cachedPath = shaderPath;
             cachedRevision = revision;
-            string fileName = SafeName(shaderPath) + "-" + revision + ".json";
-            string summaryPath = SummaryRoot + fileName;
+            cachedSummaryWriteTicks = summaryWriteTicks;
             cachedSummary = File.Exists(summaryPath) ? ParseSummary(File.ReadAllText(summaryPath), revision) : null;
             return cachedSummary;
         }

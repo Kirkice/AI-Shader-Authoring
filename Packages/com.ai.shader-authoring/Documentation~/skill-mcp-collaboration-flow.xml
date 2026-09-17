@@ -1,0 +1,54 @@
+<h1>Skill 与 MCP 协同流程</h1>
+<p>以四个阶段呈现从需求到交付的闭环：主 Skill 负责编排与验收，子 Skill 完成领域工作，MCP 在受控边界内执行 Unity Editor 操作并返回可复查证据。</p>
+<whiteboard type="mermaid">
+flowchart TB
+    U([用户需求]) --> P1
+
+    subgraph P1[01 规划与门禁]
+        direction LR
+        A[主 Skill<br/>解析需求与验收标准] --> G{能力 / 风险门禁}
+        G -->|通过| K[知识库子 Skill<br/>读取项目事实]
+        K --> CP[主 Skill<br/>生成方案与 codePlan]
+    end
+
+    subgraph P2[02 生成与编译]
+        direction LR
+        S[Shader Authoring<br/>子 Skill] --> M1[MCP<br/>受控写入 Shader / 材质]
+        M1 --> C[MCP<br/>刷新、编译、诊断]
+        C --> I[Markup GUI<br/>子 Skill]
+        I --> M2[MCP<br/>写入 Inspector 标记]
+    end
+
+    subgraph P3[03 验证与性能]
+        direction LR
+        V[视觉验收<br/>子 Skill] --> M3[MCP<br/>固定场景 + 真实材质 + 截图]
+        M3 --> F[性能验收<br/>子 Skill]
+        F --> M4[MCP<br/>静态预算 + GLES / Mali]
+    end
+
+    subgraph P4[04 结论与交付]
+        direction LR
+        R[主 Skill<br/>汇总证据与验收结论] --> D([交付<br/>资产 · 报告 · 证据])
+    end
+
+    CP --> S
+    M2 --> V
+    M4 --> R
+    G -->|缺少前置条件| B([受阻<br/>说明授权 / 环境条件])
+    R -->|需修订| CP
+
+    classDef skill fill:#F3E8FF,stroke:#9B5DE5,color:#3B1464,stroke-width:2px
+    classDef mcp fill:#E0F7FA,stroke:#00A6C7,color:#063A47,stroke-width:2px
+    classDef result fill:#E8F8F0,stroke:#20A464,color:#0B5130,stroke-width:2px
+    classDef risk fill:#FFF0F2,stroke:#E64A6A,color:#7C1027,stroke-width:2px
+    class A,G,K,CP,S,I,V,F,R skill
+    class M1,C,M2,M3,M4 mcp
+    class U,D result
+    class B risk
+</whiteboard>
+<callout emoji="📌" background-color="light-blue" border-color="blue" text-color="blue">
+  <p><b>阅读方式</b>　纵向主线按“规划 → 生成 → 验证 → 交付”展开；每一阶段内部从左至右显示 Skill、子 Skill 与 MCP 的协同关系。红色分支表示前置条件不足，紫色回路表示需修订后重新生成。</p>
+</callout>
+<callout emoji="🛡️" background-color="light-green" border-color="green" text-color="green">
+  <p><b>职责分界</b>　Skill 决定“做什么、按什么标准验收”；MCP 只在授权和参数约束下执行 Unity Editor 操作，并返回 revision、诊断、绑定信息、截图与性能报告等可复查证据。</p>
+</callout>

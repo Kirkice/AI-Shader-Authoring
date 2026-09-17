@@ -1,0 +1,16 @@
+flowchart TB
+    A[01 规划与门禁<br/>主 Skill 解析需求、定义验收<br/>知识库子 Skill 提供项目事实<br/>输出方案与 codePlan]
+    B[02 生成与编译<br/>Shader / Markup GUI 子 Skill 协作<br/>MCP 写入资产、刷新、编译、诊断]
+    C[03 验证与性能<br/>视觉 / 性能子 Skill 验收<br/>MCP 固定场景、真实材质、GLES / Mali]
+    D[04 结论与交付<br/>主 Skill 汇总证据与验收结论<br/>交付资产、报告与可复查证据]
+    X([受阻<br/>说明缺少的能力、授权或环境])
+
+    A --> B --> C --> D
+    A -->|前置条件不足| X
+    D -->|需修订| A
+
+    classDef skill fill:#F3E8FF,stroke:#9B5DE5,color:#3B1464,stroke-width:2px
+    classDef result fill:#E8F8F0,stroke:#20A464,color:#0B5130,stroke-width:2px
+    classDef risk fill:#FFF0F2,stroke:#E64A6A,color:#7C1027,stroke-width:2px
+    class A,B,C,D skill
+    class X risk

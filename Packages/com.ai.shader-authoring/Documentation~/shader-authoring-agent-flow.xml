@@ -1,0 +1,59 @@
+<h1>Shader Authoring Agent：Skill 与 MCP 协同流程</h1>
+<p>以下为端到端执行树。主 Skill 负责分流、门禁、计划与最终验收；子 Skill 只在所属阶段介入；MCP 负责受控执行与返回可复查证据。</p>
+<pre lang="text" caption="执行流程"><code>用户：描述材质需求
+        │
+        ▼
+shader-authoring-agent（主编排）
+        │
+        ├─ Step 1：分类
+        │    ├─ material → 继续
+        │    ├─ vfx / post_process → 明确拒绝或转人工
+        │    └─ ambiguous → 最小澄清后重试
+        │
+        ├─ Phase 0：知识库门禁
+        │    ├─ 知识库 fresh → 记录版本，继续
+        │    └─ 缺失 / 失效 → 征得用户同意
+        │                         │
+        │                         ▼
+        │              shader-knowledge-base-builder（子 Skill）
+        │                         ├─ 收集 Unity / Pipeline / Renderer 事实
+        │                         ├─ 索引 Shader Library 与函数卡片
+        │                         ├─ 分析 Assets 与 Packages 中的 Shader 样本
+        │                         ├─ 提取项目风格、能力与证据
+        │                         └─ 发布 fresh，或返回 partial / failed / blocked
+        │                                      │
+        │                                      └─ 仅 fresh 时回到主编排
+        │
+        ├─ Step 2：Material Intent
+        ├─ Step 3：Rendering Semantic Graph
+        ├─ Step 4：项目锚点与实时能力核验
+        ├─ Step 5：Capability Resolver
+        ├─ Step 6：Shader Code Plan
+        ├─ Step 6.5：展示功能与属性确认单 → 必须取得明确编码授权
+        │
+        ├─ Step 7：受限生成、刷新和编译（MCP）
+        │    ├─ Shader 编译 / Console 检查失败
+        │    │    └─ 仅在白名单内修复，最多三轮
+        │    └─ 首次通过且需要自定义 Inspector
+        │                         │
+        │                         ▼
+        │              markup-shader-gui-authoring（子 Skill）
+        │                         ├─ 读取完整目标 Shader
+        │                         ├─ 只修改 Properties 内的注释标记
+        │                         ├─ 仅按策略添加或处理 CustomEditor
+        │                         ├─ 不改 HLSL、Pass、关键字、默认值、渲染状态
+        │                         └─ 返回 Inspector 分组、开关、枚举与歧义信息
+        │                                      │
+        │                                      ▼
+        │                         主 Skill 再次经 MCP 刷新、编译、读取诊断
+        │
+        └─ Step 8：静态 / 编译 / Console / Inspector / 画面验证
+                     ├─ PASS → 固化证据与最终版本
+                     ├─ REVISE → 返回 Code Plan，单阶段迭代
+                     └─ BLOCKED → 输出缺失能力、资产或人工决策项</code></pre>
+<callout emoji="📌" background-color="light-blue" border-color="blue" text-color="blue">
+  <p><b>边界说明</b>　MCP 不负责决定需求、生成策略或验收标准；它只在已授权的 codePlan 和参数范围内写入、刷新、编译、诊断、验证，并回传 revision、诊断、材质绑定、截图与性能结果。</p>
+</callout>
+<callout emoji="🛡️" background-color="light-yellow" border-color="yellow" text-color="orange">
+  <p><b>证据规则</b>　视觉验收必须在固定场景中绑定真实生成材质；复制旧材质后仅替换 Shader 的结果不能作为验收证据。真实 GLES / Mali 结果缺少对应构建环境时必须标记为 BLOCKED。</p>
+</callout>
