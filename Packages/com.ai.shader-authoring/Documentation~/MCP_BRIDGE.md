@@ -1,9 +1,9 @@
 # Unity MCP WebSocket Integration
 
-Unity MCP 使用外部 [`unity-mcp-server`](../../../Tools/unity-mcp-server/src/index.ts:1) 作为标准输入输出 MCP 服务，并由 Unity Editor 端的 [`UnityMcpConnection`](../Editor/Mcp/UnityMcpConnection.cs:24) 建立本机 WebSocket 连接。
+Unity MCP 使用外部 [`unity-mcp-server`](../../../Tools/unity-mcp-server/src/index.ts:1) 作为标准输入输出 MCP 服务，并由 Unity Editor 端的 [`UnityMcpConnection`](../Editor/Mcp/UnityMcpConnection.cs:27) 建立本机 WebSocket 连接。
 
 ```text
-MCP client ⇄ stdio server ⇄ ws://localhost:8080 ⇄ Unity Editor
+Agent MCP stdio session ⇄ bound unity-mcp-server ⇄ ws://localhost:8080 ⇄ identified Unity Editor
 ```
 
 ## Unity Editor 插件
@@ -11,13 +11,37 @@ MCP client ⇄ stdio server ⇄ ws://localhost:8080 ⇄ Unity Editor
 插件在 Unity 加载时启动，并会：
 
 - 连接 `ws://localhost:8080`；
-- 每秒发送编辑器状态；
+- 首次连接发送 `hello`，注册会话级 `editorInstanceId`、项目路径、Unity 版本和进程 ID；
+- 每秒发送带 `editorInstanceId` 与项目路径的编辑器状态；
 - 转发 Unity Console 日志；
 - 接收服务端的受控结构化工具调用，并在 Unity 主线程执行允许列表操作；
 - 接收人工批准的编辑器命令；
 - 断开后每 5 秒自动重连。
 
-可从 [`Unity MCP/Dashboard`](../Editor/Mcp/UnityMcpWindow.cs:68) 查看状态，或手动请求重连。
+可从 [`Unity MCP/Dashboard`](../Editor/Mcp/UnityMcpWindow.cs:84) 查看当前 Editor ID、项目路径和连接状态，或手动请求重连。
+
+## 多 Agent / 多 Unity 绑定
+
+每个 stdio MCP 服务进程生成独立 `agentSessionId`，并且必须精确解析一个目标 Unity Editor：
+
+- `UNITY_MCP_TARGET_EDITOR_ID`：Dashboard 中显示的 `editorInstanceId`，优先级最高；
+- `UNITY_MCP_TARGET_PROJECT_PATH`：规范化后的 Unity 项目根路径，例如 `H:/tmp/URP-AI`。
+
+若未设置绑定变量且只有一个已完成 `hello` 的 Unity Editor，服务自动使用该 Editor；零个候选或多个候选都会拒绝工具调用，而不会猜测、广播或使用“最后连接”的 Editor。所有工具调用带唯一 `requestId` 和当前 `agentSessionId`；Unity 回包原样回传它们，服务端只接受来自已绑定 Editor 的匹配回包。
+
+PowerShell 示例：
+
+```powershell
+$env:UNITY_MCP_TARGET_EDITOR_ID = "从 Unity MCP Dashboard 复制的 Editor ID"
+node H:/tmp/URP-AI/Tools/unity-mcp-server/build/index.js
+```
+
+或按项目绑定：
+
+```powershell
+$env:UNITY_MCP_TARGET_PROJECT_PATH = "H:/tmp/URP-AI"
+node H:/tmp/URP-AI/Tools/unity-mcp-server/build/index.js
+```
 
 ## 程序集隔离
 

@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Text.Json;
+using System.IO;
 using Microsoft.CSharp;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -46,8 +47,12 @@ namespace UnityMcp.Editor
         private static bool isConnected;
         private static string lastErrorMessage = string.Empty;
         private static bool serviceEnabled = true;
+        private static readonly string EditorInstanceId = GetOrCreateEditorInstanceId();
+        private static readonly string ProjectPath = NormalizePath(Directory.GetParent(Application.dataPath)?.FullName ?? Application.dataPath);
 
         public static bool IsConnected => isConnected && webSocket != null && webSocket.State == WebSocketState.Open;
+        public static string CurrentEditorInstanceId => EditorInstanceId;
+        public static string CurrentProjectPath => ProjectPath;
         public static bool IsServiceEnabled => serviceEnabled;
         public static ServiceState State => !serviceEnabled
             ? ServiceState.Closed
@@ -151,8 +156,17 @@ namespace UnityMcp.Editor
                 isConnected = true;
                 lastErrorMessage = string.Empty;
                 nextStateSendUtc = DateTime.MinValue;
+                Send("hello", new
+                {
+                    protocolVersion = 2,
+                    editorInstanceId = EditorInstanceId,
+                    projectPath = ProjectPath,
+                    projectName = Path.GetFileName(ProjectPath),
+                    unityVersion = Application.unityVersion,
+                    processId = System.Diagnostics.Process.GetCurrentProcess().Id
+                });
                 _ = ReceiveLoop(webSocket, cancellation.Token);
-                Debug.Log("[Unity MCP] Connected to WebSocket server.");
+                Debug.Log("[Unity MCP] Connected to WebSocket server as " + EditorInstanceId + " for " + ProjectPath + ".");
             }
             catch (Exception exception)
             {
@@ -294,6 +308,7 @@ namespace UnityMcp.Editor
 
         private static void ExecuteEditorCommand(string commandData)
         {
+            EditorCommandData command = null;
             var logs = new List<string>();
             var errors = new List<string>();
             var warnings = new List<string>();
@@ -307,12 +322,14 @@ namespace UnityMcp.Editor
             Application.logMessageReceived += Capture;
             try
             {
-                var command = JsonSerializer.Deserialize<EditorCommandData>(commandData ?? "{}");
+                command = JsonSerializer.Deserialize<EditorCommandData>(commandData ?? "{}");
                 if (string.IsNullOrWhiteSpace(command?.code)) throw new ArgumentException("The command payload does not contain C# code.");
                 Debug.Log($"[Unity MCP] Executing command:\n{command.code}");
                 var result = CSEditorHelper.ExecuteCommand(command.code);
                 Send("commandResult", new
                 {
+                    requestId = command.requestId,
+                    agentSessionId = command.agentSessionId,
                     result,
                     logs,
                     errors,
@@ -326,7 +343,7 @@ namespace UnityMcp.Editor
                 var error = $"[Unity MCP] Failed to execute editor command: {exception.Message}\n{exception.StackTrace}";
                 Debug.LogError(error);
                 errors.Add(error);
-                Send("commandResult", new { result = (object)null, logs, errors, warnings, executionSuccess = false, errorDetails = new { message = exception.Message, stackTrace = exception.StackTrace, type = exception.GetType().Name } });
+                Send("commandResult", new { requestId = command?.requestId, agentSessionId = command?.agentSessionId, result = (object)null, logs, errors, warnings, executionSuccess = false, errorDetails = new { message = exception.Message, stackTrace = exception.StackTrace, type = exception.GetType().Name } });
             }
             finally
             {
@@ -336,6 +353,8 @@ namespace UnityMcp.Editor
 
         private static void ExecuteStructuredTool(string toolData)
         {
+            string requestId = null;
+            string agentSessionId = null;
             try
             {
                 using (var document = JsonDocument.Parse(toolData ?? "{}"))
@@ -344,9 +363,11 @@ namespace UnityMcp.Editor
                     if (!root.TryGetProperty("toolName", out var toolNameElement) || toolNameElement.ValueKind != JsonValueKind.String)
                         throw new ArgumentException("The structured tool payload does not contain toolName.");
                     var toolName = toolNameElement.GetString();
+                    requestId = root.TryGetProperty("requestId", out var requestIdElement) ? requestIdElement.GetString() : null;
+                    agentSessionId = root.TryGetProperty("agentSessionId", out var agentSessionIdElement) ? agentSessionIdElement.GetString() : null;
                     var args = root.TryGetProperty("args", out var argsElement) ? argsElement : default;
                     var result = UnityMcpShaderTools.Handle(toolName, args);
-                    Send("structuredToolResult", new { toolName, result, executionSuccess = true });
+                    Send("structuredToolResult", new { requestId, agentSessionId, toolName, result, executionSuccess = true });
                 }
             }
             catch (Exception exception)
@@ -354,6 +375,8 @@ namespace UnityMcp.Editor
                 Debug.LogError("[Unity MCP] Structured tool failed: " + exception);
                 Send("structuredToolResult", new
                 {
+                    requestId,
+                    agentSessionId,
                     executionSuccess = false,
                     errorDetails = new { message = exception.Message, stackTrace = exception.StackTrace, type = exception.GetType().Name }
                 });
@@ -376,6 +399,8 @@ namespace UnityMcp.Editor
             var selectedObjects = Selection.objects.Where(item => item != null).Select(item => item.name).ToArray();
             return new
             {
+                editorInstanceId = EditorInstanceId,
+                projectPath = ProjectPath,
                 activeGameObjects,
                 selectedObjects,
                 playModeState = EditorApplication.isPlaying ? "Playing" : EditorApplication.isPaused ? "Paused" : "Stopped",
@@ -408,7 +433,19 @@ namespace UnityMcp.Editor
             return string.Join("/", names);
         }
 
-        [Serializable] private sealed class EditorCommandData { public string code { get; set; } }
+        private static string GetOrCreateEditorInstanceId()
+        {
+            const string key = "UnityMcp.EditorInstanceId";
+            var value = SessionState.GetString(key, string.Empty);
+            if (!string.IsNullOrEmpty(value)) return value;
+            value = Guid.NewGuid().ToString("N");
+            SessionState.SetString(key, value);
+            return value;
+        }
+
+        private static string NormalizePath(string path) => (path ?? string.Empty).Replace('\\', '/');
+
+        [Serializable] private sealed class EditorCommandData { public string code { get; set; } public string requestId { get; set; } public string agentSessionId { get; set; } }
         [Serializable] private sealed class SelectionData { public string objectPath { get; set; } }
         [Serializable] private sealed class LogEntry { public string message; public string stackTrace; public string logType; public string timestamp; }
 

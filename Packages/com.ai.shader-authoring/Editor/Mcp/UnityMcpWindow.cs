@@ -41,7 +41,7 @@ namespace UnityMcp.Editor
         };
 
         private const float OuterPadding = 14f;
-        private const float StatusCardHeight = 174f;
+        private const float StatusCardHeight = 196f;
         private const float ToolCardHeight = 62f;
         private const float ToolInspectorHeight = 104f;
         private const float ToolGap = 8f;
@@ -144,10 +144,10 @@ namespace UnityMcp.Editor
             var stateText = connected ? "Unity MCP 已连接" : enabled ? "Unity MCP 等待连接" : "Unity MCP 已关闭";
             var chipText = connected ? "CONNECTED · :" + UnityMcpConnection.ServerUri.Port : enabled ? "WAITING · :" + UnityMcpConnection.ServerUri.Port : "OFFLINE";
             var summary = connected
-                ? "Agent 已连接本地 Unity MCP 服务。Dashboard 直接展示与 Agent 相同的 18 个协议工具。"
+                ? "已注册当前 Editor 身份；Agent 必须按 editorInstanceId 或项目路径显式绑定后才能调用工具。"
                 : enabled
-                    ? "本地 MCP 服务正在等待 Agent 建立 WebSocket 连接。"
-                    : "启用本地 Unity MCP 服务后，Agent 即可连接当前 Unity Editor。";
+                    ? "本地 MCP 服务正在等待 Unity WebSocket 连接。"
+                    : "启用本地 Unity MCP 服务后，当前 Editor 将注册可绑定身份。";
 
             GUI.Label(new Rect(rect.x + 14f, rect.y + 12f, 160f, 17f), "MCP SERVER  ·  GLOBAL", eyebrowStyle);
             DrawStatusDot(new Rect(rect.x + 15f, rect.y + 42f, 9f, 9f), stateColor);
@@ -155,6 +155,7 @@ namespace UnityMcp.Editor
             DrawChip(new Rect(rect.xMax - 180f, rect.y + 31f, 164f, 25f), chipText, stateColor);
             GUI.Label(new Rect(rect.x + 15f, rect.y + 66f, rect.width - 30f, 32f), summary, bodyStyle);
             GUI.Label(new Rect(rect.x + 15f, rect.y + 104f, rect.width - 30f, 19f), GetEndpointDisplay(), endpointStyle);
+            GUI.Label(new Rect(rect.x + 15f, rect.y + 123f, rect.width - 30f, 19f), "Editor ID: " + UnityMcpConnection.CurrentEditorInstanceId, endpointStyle);
 
             const float gap = 8f;
             var actionsY = rect.yMax - 35f;
@@ -232,8 +233,10 @@ namespace UnityMcp.Editor
             var endpoint = UnityMcpConnection.ServerUri;
             var message = "WebSocket 终端：" + endpoint + "\n\n"
                 + "状态：" + GetStateDescription() + "\n"
+                + "Editor ID：" + UnityMcpConnection.CurrentEditorInstanceId + "\n"
+                + "项目路径：" + UnityMcpConnection.CurrentProjectPath + "\n"
                 + "Console 缓冲：" + UnityMcpConnection.LogCount + " 条\n\n"
-                + "服务启用后，Unity 会自动尝试连接本地 UnityMCP 服务端。";
+                + "多 Agent 场景请为每个 MCP 服务设置 UNITY_MCP_TARGET_EDITOR_ID，或设置 UNITY_MCP_TARGET_PROJECT_PATH。";
             EditorUtility.DisplayDialog("Unity MCP 信息", message, "确定");
         }
 

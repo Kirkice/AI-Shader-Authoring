@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { randomUUID } from 'node:crypto';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -8,6 +9,15 @@ import {
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import { WebSocketServer, WebSocket } from 'ws';
+
+interface UnityEditorIdentity {
+  editorInstanceId: string;
+  projectPath: string;
+  projectName: string;
+  unityVersion: string;
+  processId: number;
+  protocolVersion: number;
+}
 
 interface UnityEditorState {
   activeGameObjects: string[];
@@ -26,10 +36,27 @@ interface LogEntry {
   timestamp: string;
 }
 
+interface UnityEditorClient {
+  socket: WebSocket;
+  identity: UnityEditorIdentity | null;
+  editorState: UnityEditorState;
+  logBuffer: LogEntry[];
+}
+
+interface PendingUnityRequest {
+  resolve: (value: any) => void;
+  reject: (reason?: any) => void;
+  editorInstanceId: string;
+}
+
 class UnityMCPServer {
   private server: Server;
   private wsServer: WebSocketServer;
-  private unityConnection: WebSocket | null = null;
+  private readonly agentSessionId = process.env.UNITY_MCP_AGENT_SESSION_ID || randomUUID();
+  private targetEditorInstanceId = process.env.UNITY_MCP_TARGET_EDITOR_ID || '';
+  private readonly targetProjectPath = this.normalizePath(process.env.UNITY_MCP_TARGET_PROJECT_PATH || '');
+  private readonly editorClients = new Map<WebSocket, UnityEditorClient>();
+  private readonly pendingUnityRequests = new Map<string, PendingUnityRequest>();
   private editorState: UnityEditorState = {
     activeGameObjects: [],
     selectedObjects: [],
@@ -41,19 +68,7 @@ class UnityMCPServer {
   private logBuffer: LogEntry[] = [];
   private readonly maxLogBufferSize = 1000;
   
-  // Legacy arbitrary-command response handling.
-  private commandResultPromise: {
-    resolve: (value: any) => void;
-    reject: (reason?: any) => void;
-  } | null = null;
   private commandStartTime: number | null = null;
-
-  // Structured tool calls are serialized because Unity Editor work must run on its main thread.
-  private structuredToolResultPromise: {
-    resolve: (value: any) => void;
-    reject: (reason?: any) => void;
-  } | null = null;
-  private structuredToolBusy = false;
 
   constructor() {
     // Initialize MCP Server
@@ -94,37 +109,34 @@ class UnityMCPServer {
     });
 
     this.wsServer.on('connection', (ws: WebSocket) => {
-      console.error('[Unity MCP] Unity Editor connected');
-      this.unityConnection = ws;
+      const client: UnityEditorClient = {
+        socket: ws,
+        identity: null,
+        editorState: this.emptyEditorState(),
+        logBuffer: []
+      };
+      this.editorClients.set(ws, client);
+      console.error('[Unity MCP] Unity Editor socket connected; awaiting hello identity.');
 
       ws.on('message', (data: Buffer) => {
         try {
           const message = JSON.parse(data.toString());
-          console.error('[Unity MCP] Received message:', message.type);
-          this.handleUnityMessage(message);
+          this.handleUnityMessage(client, message);
         } catch (error) {
           console.error('[Unity MCP] Error handling message:', error);
         }
       });
 
-      ws.on('error', (error) => {
-        console.error('[Unity MCP] WebSocket error:', error);
-      });
-
-      ws.on('close', () => {
-        console.error('[Unity MCP] Unity Editor disconnected');
-        this.unityConnection = null;
-        if (this.structuredToolResultPromise) {
-          this.structuredToolResultPromise.reject(new Error('Unity Editor disconnected while a structured tool was executing.'));
-          this.structuredToolResultPromise = null;
-          this.structuredToolBusy = false;
-        }
-      });
+      ws.on('error', (error) => console.error('[Unity MCP] WebSocket error:', error));
+      ws.on('close', () => this.handleEditorDisconnected(client));
     });
   }
 
-  private handleUnityMessage(message: any) {
+  private handleUnityMessage(client: UnityEditorClient, message: any) {
     switch (message.type) {
+      case 'hello':
+        this.registerEditorIdentity(client, message.data);
+        break;
       case 'editorState':
         // Create a simplified version of the state
         const filteredData: UnityEditorState = {
@@ -146,31 +158,96 @@ class UnityMCPServer {
           });
         }
 
-        this.editorState = filteredData;
+        client.editorState = filteredData;
+        if (this.isSelectedClient(client)) this.editorState = filteredData;
         break;
       
       case 'commandResult':
-        // Resolve the pending command result promise
-        if (this.commandResultPromise) {
-          this.commandResultPromise.resolve(message.data);
-          this.commandResultPromise = null;
-        }
-        break;
-
       case 'structuredToolResult':
-        if (this.structuredToolResultPromise) {
-          this.structuredToolResultPromise.resolve(message.data);
-          this.structuredToolResultPromise = null;
-          this.structuredToolBusy = false;
-        }
+        this.resolveUnityRequest(client, message.data);
         break;
 
       case 'log':
-        this.handleLogMessage(message.data);
+        this.handleLogMessage(client, message.data);
         break;
       
       default:
         console.error('[Unity MCP] Unknown message type:', message.type);
+    }
+  }
+
+  private emptyEditorState(): UnityEditorState {
+    return { activeGameObjects: [], selectedObjects: [], playModeState: 'Stopped', sceneHierarchy: {}, projectStructure: {} };
+  }
+
+  private normalizePath(path: string): string {
+    return path.replace(/\\/g, '/').replace(/\/$/, '');
+  }
+
+  private registerEditorIdentity(client: UnityEditorClient, data: any): void {
+    const editorInstanceId = typeof data?.editorInstanceId === 'string' ? data.editorInstanceId : '';
+    const projectPath = this.normalizePath(typeof data?.projectPath === 'string' ? data.projectPath : '');
+    if (!editorInstanceId || !projectPath) {
+      console.error('[Unity MCP] Ignoring Unity socket without editorInstanceId/projectPath hello payload.');
+      client.socket.close(1008, 'hello requires editor identity');
+      return;
+    }
+    client.identity = {
+      editorInstanceId,
+      projectPath,
+      projectName: typeof data.projectName === 'string' ? data.projectName : '',
+      unityVersion: typeof data.unityVersion === 'string' ? data.unityVersion : '',
+      processId: Number(data.processId) || 0,
+      protocolVersion: Number(data.protocolVersion) || 1
+    };
+    console.error(`[Unity MCP] Registered Editor ${editorInstanceId} for ${projectPath}.`);
+  }
+
+  private resolveTargetEditor(): UnityEditorClient {
+    const candidates = Array.from(this.editorClients.values()).filter(client =>
+      client.identity !== null
+      && client.socket.readyState === WebSocket.OPEN
+      && (!this.targetEditorInstanceId || client.identity.editorInstanceId === this.targetEditorInstanceId)
+      && (!this.targetProjectPath || client.identity.projectPath === this.targetProjectPath));
+    if (candidates.length === 1) return candidates[0];
+    const available = Array.from(this.editorClients.values())
+      .filter(client => client.identity !== null)
+      .map(client => `${client.identity!.editorInstanceId} (${client.identity!.projectPath})`)
+      .join(', ') || 'none';
+    const reason = candidates.length === 0
+      ? `No Unity Editor matches this Agent binding. Set UNITY_MCP_TARGET_EDITOR_ID or UNITY_MCP_TARGET_PROJECT_PATH. Available: ${available}`
+      : `Agent binding is ambiguous; ${candidates.length} Unity Editors match. Set UNITY_MCP_TARGET_EDITOR_ID. Matches: ${available}`;
+    throw new McpError(ErrorCode.InternalError, reason);
+  }
+
+  private isSelectedClient(client: UnityEditorClient): boolean {
+    try { return this.resolveTargetEditor() === client; } catch { return false; }
+  }
+
+  private resolveUnityRequest(client: UnityEditorClient, data: any): void {
+    const requestId = typeof data?.requestId === 'string' ? data.requestId : '';
+    const pending = requestId ? this.pendingUnityRequests.get(requestId) : undefined;
+    if (!pending) {
+      console.error(`[Unity MCP] Ignored unmatched Unity response requestId=${requestId || '<missing>'}.`);
+      return;
+    }
+    if (client.identity?.editorInstanceId !== pending.editorInstanceId) {
+      pending.reject(new Error('Unity response came from an Editor other than the bound target.'));
+    } else {
+      pending.resolve(data);
+    }
+    this.pendingUnityRequests.delete(requestId);
+  }
+
+  private handleEditorDisconnected(client: UnityEditorClient): void {
+    this.editorClients.delete(client.socket);
+    const identity = client.identity?.editorInstanceId ?? '<unidentified>';
+    console.error(`[Unity MCP] Unity Editor disconnected: ${identity}`);
+    for (const [requestId, pending] of this.pendingUnityRequests) {
+      if (pending.editorInstanceId === client.identity?.editorInstanceId) {
+        pending.reject(new Error(`Bound Unity Editor ${identity} disconnected while request ${requestId} was executing.`));
+        this.pendingUnityRequests.delete(requestId);
+      }
     }
   }
 
@@ -356,13 +433,8 @@ class UnityMCPServer {
 
     // Handle tool calls with enhanced validation and error handling
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
-      // Verify Unity connection with detailed error message
-      if (!this.unityConnection) {
-        throw new McpError(
-          ErrorCode.InternalError,
-          'Unity Editor is not connected. Please ensure the Unity Editor is running and the UnityMCP window is open.'
-        );
-      }
+      // Resolve this Agent's explicitly bound Unity Editor before executing any tool.
+      const targetEditor = this.resolveTargetEditor();
 
       const { name, arguments: args } = request.params;
 
@@ -457,24 +529,26 @@ class UnityMCPServer {
             const startLogIndex = this.logBuffer.length;
             this.commandStartTime = Date.now();
 
-            // Send command to Unity
-            this.unityConnection.send(JSON.stringify({
-              type: 'executeEditorCommand',
-              data: { code: args.code },
-            }));
+            const requestId = randomUUID();
+            try {
+              const resultPromise = new Promise<any>((resolve, reject) => {
+                this.pendingUnityRequests.set(requestId, { resolve, reject, editorInstanceId: targetEditor.identity!.editorInstanceId });
+              });
+              targetEditor.socket.send(JSON.stringify({
+                type: 'executeEditorCommand',
+                data: { requestId, agentSessionId: this.agentSessionId, code: args.code },
+              }));
 
-            // Wait for result with enhanced timeout handling
-            const timeoutMs = 5000;
-            const result = await Promise.race([
-              new Promise((resolve, reject) => {
-                this.commandResultPromise = { resolve, reject };
-              }),
-              new Promise((_, reject) =>
-                setTimeout(() => reject(new Error(
-                  `Command execution timed out after ${timeoutMs/1000} seconds. This may indicate a long-running operation or an issue with the Unity Editor.`
-                )), timeoutMs)
-              )
-            ]);
+              // Wait for result with enhanced timeout handling
+              const timeoutMs = 5000;
+              const result = await Promise.race([
+                resultPromise,
+                new Promise((_, reject) =>
+                  setTimeout(() => reject(new Error(
+                    `Command execution timed out after ${timeoutMs/1000} seconds. This may indicate a long-running operation or an issue with the Unity Editor.`
+                  )), timeoutMs)
+                )
+              ]);
 
             const commandResult = result as {
               executionSuccess?: boolean;
@@ -497,19 +571,22 @@ class UnityMCPServer {
             // Calculate execution time
             const executionTime = Date.now() - this.commandStartTime;
 
-            return {
-              content: [
-                {
-                  type: 'text',
-                  text: JSON.stringify({
-                    result,
-                    logs: commandLogs,
-                    executionTime: `${executionTime}ms`,
-                    status: 'success'
-                  }, null, 2),
-                },
-              ],
-            };
+              return {
+                content: [
+                  {
+                    type: 'text',
+                    text: JSON.stringify({
+                      result,
+                      logs: commandLogs,
+                      executionTime: `${executionTime}ms`,
+                      status: 'success'
+                    }, null, 2),
+                  },
+                ],
+              };
+            } finally {
+              this.pendingUnityRequests.delete(requestId);
+            }
           } catch (error) {
             // Enhanced error handling with specific error types
             if (error instanceof Error) {
@@ -581,7 +658,8 @@ class UnityMCPServer {
       'get_shader_knowledge_base_status', 'build_shader_knowledge_base', 'query_shader_knowledge_base',
       'inspect_shader_structure', 'get_asset_revision', 'write_generated_text_asset',
       'refresh_and_compile_assets', 'ensure_validation_scene', 'capture_validation',
-      'create_shader_checkpoint', 'restore_shader_checkpoint', 'get_console_diagnostics'
+      'create_shader_checkpoint', 'restore_shader_checkpoint', 'get_console_diagnostics',
+      'export_compiled_gles_variants', 'analyze_shader_performance'
     ];
   }
 
@@ -609,28 +687,23 @@ class UnityMCPServer {
       { name: 'capture_validation', description: 'Queue deterministic validation capture for an existing validation session.', category: 'Shader Validation', inputSchema: { ...jobContext, properties: { ...jobContext.properties, validationSessionId: { type: 'string' }, captures: { type: 'array' } }, required: ['validationSessionId', 'captures'] } },
       { name: 'create_shader_checkpoint', description: 'Queue an immutable Shader run checkpoint manifest.', category: 'Shader Validation', inputSchema: { ...jobContext, properties: { ...jobContext.properties, decision: { type: 'string', enum: ['pass', 'revise', 'blocked'] }, assetRevisions: { type: 'array' } }, required: ['decision', 'assetRevisions'] } },
       { name: 'restore_shader_checkpoint', description: 'Request structured restoration of a generated-assets checkpoint.', category: 'Shader Assets', inputSchema: { ...jobContext, properties: { ...jobContext.properties, checkpointId: { type: 'string' } }, required: ['checkpointId'] } },
-      { name: 'get_console_diagnostics', description: 'Read Unity Console errors and warnings for generated Shader assets, including authoritative shader compiler findings for every platform. Use this after every constrained-execution write in Step 7.', category: 'Shader Validation', inputSchema: { type: 'object', properties: { assetPaths: { type: 'array', items: { type: 'string' }, description: 'Optional project-relative asset paths to scope diagnostics to; omit to scan the whole buffered console.' }, includeWarnings: { type: 'boolean', description: 'Include Warning-severity entries. Defaults to false so only errors block validation.' }, since: { type: 'string', description: 'ISO-8601 cursor (typically the write/job timestamp). Console entries at or before this instant are ignored so stale errors cannot pin a fixed Shader as failed.' }, operationContext: { type: 'object' } }, additionalProperties: true } }
+      { name: 'get_console_diagnostics', description: 'Read Unity Console errors and warnings for generated Shader assets, including authoritative shader compiler findings for every platform. Use this after every constrained-execution write in Step 7.', category: 'Shader Validation', inputSchema: { type: 'object', properties: { assetPaths: { type: 'array', items: { type: 'string' }, description: 'Optional project-relative asset paths to scope diagnostics to; omit to scan the whole buffered console.' }, includeWarnings: { type: 'boolean', description: 'Include Warning-severity entries. Defaults to false so only errors block validation.' }, since: { type: 'string', description: 'ISO-8601 cursor (typically the write/job timestamp). Console entries at or before this instant are ignored so stale errors cannot pin a fixed Shader as failed.' }, operationContext: { type: 'object' } }, additionalProperties: true } },
+      { name: 'export_compiled_gles_variants', description: 'Export actual Unity-compiled GLES3x GLSL vertex and fragment variants for a Shader.', category: 'Shader Performance', inputSchema: { ...jobContext, properties: { ...jobContext.properties, shaderPath: { type: 'string' } }, required: ['shaderPath'] } },
+      { name: 'analyze_shader_performance', description: 'Analyze static Shader cost and optional Mali Offline Compiler metrics. Advisory only; never blocks visual validation.', category: 'Shader Performance', inputSchema: { ...jobContext, properties: { ...jobContext.properties, shaderPath: { type: 'string' }, policy: { type: 'string', enum: ['low_android', 'medium_android', 'high_android', 'all_android', 'custom', 'collect_only'] }, maliTargets: { type: 'array', items: { type: 'string' } }, maliCompilerPath: { type: 'string' } }, required: ['shaderPath', 'policy'] } }
     ];
   }
 
   private async callStructuredTool(name: string, args: unknown) {
-    if (!this.unityConnection || this.unityConnection.readyState !== WebSocket.OPEN) {
-      throw new McpError(ErrorCode.InternalError, 'Unity Editor is not connected.');
-    }
-    if (this.structuredToolBusy) {
-      throw new McpError(ErrorCode.InternalError, 'Another structured Unity tool is currently executing; poll its job or retry shortly.');
-    }
-    this.structuredToolBusy = true;
+    const targetEditor = this.resolveTargetEditor();
+    const requestId = randomUUID();
+    const resultPromise = new Promise<any>((resolve, reject) => {
+      this.pendingUnityRequests.set(requestId, { resolve, reject, editorInstanceId: targetEditor.identity!.editorInstanceId });
+    });
     try {
-      const resultPromise = new Promise<any>((resolve, reject) => {
-        this.structuredToolResultPromise = { resolve, reject };
-      });
-
-      this.unityConnection.send(JSON.stringify({
+      targetEditor.socket.send(JSON.stringify({
         type: 'executeStructuredTool',
-        data: { toolName: name, args }
+        data: { requestId, agentSessionId: this.agentSessionId, toolName: name, args }
       }));
-
       const result = await Promise.race([
         resultPromise,
         new Promise((_, reject) => setTimeout(() => reject(new Error('Structured Unity tool did not acknowledge within 30 seconds.')), 30000))
@@ -640,16 +713,15 @@ class UnityMCPServer {
       }
       return { content: [{ type: 'text', text: JSON.stringify(result.result, null, 2) }] };
     } finally {
-      this.structuredToolResultPromise = null;
-      this.structuredToolBusy = false;
+      this.pendingUnityRequests.delete(requestId);
     }
   }
 
-  private handleLogMessage(logEntry: LogEntry) {
-    // Add to buffer, removing oldest if at capacity
-    this.logBuffer.push(logEntry);
-    if (this.logBuffer.length > this.maxLogBufferSize) {
-      this.logBuffer.shift();
+  private handleLogMessage(client: UnityEditorClient, logEntry: LogEntry) {
+    client.logBuffer.push(logEntry);
+    if (client.logBuffer.length > this.maxLogBufferSize) client.logBuffer.shift();
+    if (this.isSelectedClient(client)) {
+      this.logBuffer = client.logBuffer;
     }
   }
 
@@ -712,8 +784,8 @@ class UnityMCPServer {
   }
 
   private async cleanup() {
-    if (this.unityConnection) {
-      this.unityConnection.close();
+    for (const client of this.editorClients.values()) {
+      client.socket.close();
     }
     this.wsServer.close();
     await this.server.close();
