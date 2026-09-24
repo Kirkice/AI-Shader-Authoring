@@ -50,6 +50,7 @@ namespace UnityMcp.Editor
                 case "analyze_shader_performance": return StartPerformanceAnalysis(args);
                 case "ensure_validation_scene": return StartValidationScene(args);
                 case "capture_validation": return StartCapture(args);
+                case "create_shader_checkpoint": return StartShaderCheckpoint(args);
                 case "get_console_diagnostics": return GetConsoleDiagnostics(args);
                 default: throw new ArgumentOutOfRangeException(nameof(toolName), toolName, "Unsupported structured Unity MCP tool.");
             }
@@ -253,6 +254,7 @@ namespace UnityMcp.Editor
                 case "analyze_shader_performance":
                 case "ensure_validation_scene":
                 case "capture_validation":
+                case "create_shader_checkpoint":
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(type), type, "Unsupported structured Unity job type.");
@@ -267,6 +269,7 @@ namespace UnityMcp.Editor
         private static object StartPerformanceAnalysis(JsonElement args) => CreateJob("analyze_shader_performance", args, args);
         private static object StartValidationScene(JsonElement args) => CreateJob("ensure_validation_scene", args, args);
         private static object StartCapture(JsonElement args) => CreateJob("capture_validation", args, args);
+        private static object StartShaderCheckpoint(JsonElement args) => CreateJob("create_shader_checkpoint", args, args);
 
         /// <summary>
         /// Reads Unity console diagnostics, optionally scoped to specific assets, and augments Shader
@@ -589,11 +592,12 @@ namespace UnityMcp.Editor
                     switch (record.jobType)
                     {
                         case "build_shader_knowledge_base": result = BuildKnowledgeBase(args.RootElement, record); break;
-                        case "refresh_and_compile_assets": return RunCompileAsync(args.RootElement, record).ContinueWith(task => CompleteJob(record, task));
+                        case "refresh_and_compile_assets": result = RunCompile(args.RootElement, record); break;
                         case "export_compiled_gles_variants": result = CompiledGlesVariantExporter.Export(args.RootElement, record.cancellation.Token); break;
                         case "analyze_shader_performance": result = ShaderPerformanceAnalyzer.Analyze(args.RootElement, record.cancellation.Token); break;
                         case "ensure_validation_scene": result = EnsureValidationScene(args.RootElement, record); break;
                         case "capture_validation": result = CaptureValidation(args.RootElement, record); break;
+                        case "create_shader_checkpoint": result = CreateShaderCheckpoint(args.RootElement, record); break;
                         default: throw new InvalidOperationException("Unsupported job type: " + record.jobType);
                     }
                     ThrowIfJobCancellationRequested(record);
@@ -613,34 +617,6 @@ namespace UnityMcp.Editor
             }
             finally { record.completedAtUtc = DateTime.UtcNow.ToString("o"); }
             return Task.CompletedTask;
-        }
-
-        private static void CompleteJob(JobRecord record, Task<object> task)
-        {
-            if (task.Status == TaskStatus.RanToCompletion)
-            {
-                if (record.cancellation.IsCancellationRequested)
-                {
-                    record.status = "cancelled";
-                }
-                else
-                {
-                    record.resultJson = JsonSerializer.Serialize(task.Result, JsonOptions);
-                    record.status = "succeeded";
-                }
-            }
-            else if (task.IsCanceled || task.Exception?.GetBaseException() is OperationCanceledException)
-            {
-                record.status = "cancelled";
-            }
-            else
-            {
-                var exception = task.Exception?.GetBaseException();
-                record.status = "failed";
-                record.error = exception?.Message ?? "Structured job failed.";
-                Debug.LogError("[Unity MCP] Structured job failed: " + record.jobType + "\n" + exception);
-            }
-            record.completedAtUtc = DateTime.UtcNow.ToString("o");
         }
 
         private static object GetJob(JsonElement args)
@@ -1230,10 +1206,10 @@ namespace UnityMcp.Editor
         }
 
         /// <summary>
-        /// Imports the requested assets, then defers the compile-evidence read to the next editor tick so
-        /// Unity shader compilation and Console reporting have completed before diagnostics are collected.
+        /// 在 Unity 主线程中同步导入资产并采集编译证据，避免旧版 Unity 丢失 delayCall
+        /// 或后台 continuation 无法回写 Job 状态。
         /// </summary>
-        private static Task<object> RunCompileAsync(JsonElement args, JobRecord record)
+        private static object RunCompile(JsonElement args, JobRecord record)
         {
             var paths = GetStringArray(args, "assetPaths");
             ThrowIfJobCancellationRequested(record);
@@ -1245,46 +1221,35 @@ namespace UnityMcp.Editor
             }
             ThrowIfJobCancellationRequested(record);
             AssetDatabase.Refresh();
-            var completion = new TaskCompletionSource<object>();
-            EditorApplication.delayCall += () =>
+
+            var compiledAssets = paths.Select(path => new { path, observedRevision = File.Exists(path) ? Revision(path) : "absent", importStatus = "imported" }).ToArray();
+            var logs = ReadConsoleLogEntries();
+            var diagnostics = new List<DiagnosticEntry>();
+            var scannedShaders = new List<object>();
+            foreach (var path in paths)
             {
-                try
-                {
-                    ThrowIfJobCancellationRequested(record);
-                    var compiledAssets = paths.Select(path => new { path, observedRevision = File.Exists(path) ? Revision(path) : "absent", importStatus = "imported" }).ToArray();
-                    var logs = ReadConsoleLogEntries();
-                    var diagnostics = new List<DiagnosticEntry>();
-                    var scannedShaders = new List<object>();
-                    foreach (var path in paths)
-                    {
-                        ThrowIfJobCancellationRequested(record);
-                        diagnostics.AddRange(ExtractDiagnostics(logs, path, true));
-                        // Live compiler findings are part of the compile job verdict, not just console noise.
-                        if (!path.EndsWith(".shader", StringComparison.OrdinalIgnoreCase)) continue;
-                        var scan = DescribeShaderCompilation(path, true);
-                        scannedShaders.Add(scan.payload);
-                        diagnostics.AddRange(scan.diagnostics);
-                    }
-                    var errorCount = diagnostics.Count(item => item.severity == "error");
-                    var warningCount = diagnostics.Count(item => item.severity == "warning");
-                    completion.TrySetResult(new
-                    {
-                        status = errorCount > 0 ? "failed" : "passed",
-                        compiledAssets,
-                        scannedShaders = scannedShaders.ToArray(),
-                        diagnostics = diagnostics.ToArray(),
-                        errorCount,
-                        warningCount,
-                        newlyObservedLogs = Array.Empty<object>(),
-                        compiledAtUtc = DateTime.UtcNow.ToString("o")
-                    });
-                }
-                catch (Exception exception)
-                {
-                    completion.TrySetException(exception);
-                }
+                ThrowIfJobCancellationRequested(record);
+                diagnostics.AddRange(ExtractDiagnostics(logs, path, true));
+                // 实时编译器结果属于编译任务判定依据，而不只是 Console 噪声。
+                if (!path.EndsWith(".shader", StringComparison.OrdinalIgnoreCase)) continue;
+                var scan = DescribeShaderCompilation(path, true);
+                scannedShaders.Add(scan.payload);
+                diagnostics.AddRange(scan.diagnostics);
+            }
+
+            var errorCount = diagnostics.Count(item => item.severity == "error");
+            var warningCount = diagnostics.Count(item => item.severity == "warning");
+            return new
+            {
+                status = errorCount > 0 ? "failed" : "passed",
+                compiledAssets,
+                scannedShaders = scannedShaders.ToArray(),
+                diagnostics = diagnostics.ToArray(),
+                errorCount,
+                warningCount,
+                newlyObservedLogs = Array.Empty<object>(),
+                compiledAtUtc = DateTime.UtcNow.ToString("o")
             };
-            return completion.Task;
         }
 
         private static object EnsureValidationScene(JsonElement args, JobRecord record)
@@ -1294,21 +1259,22 @@ namespace UnityMcp.Editor
             var scenePath = RequireString(profile, "scenePath");
             var cameraPath = RequireString(profile, "cameraPath");
             var targetPath = RequireString(target, "objectPath");
-            var shaderPath = GetString(target, "shaderPath") ?? RequireString(args, "shaderPath");
+            var materialPath = RequireString(target, "materialPath");
             RequireReadPath(scenePath);
-            RequireReadPath(shaderPath);
+            RequireReadPath(materialPath);
             if (!scenePath.EndsWith(".unity", StringComparison.OrdinalIgnoreCase) || !File.Exists(scenePath)) throw new ArgumentException("validationProfile.scenePath must reference an existing Unity scene.");
-            if (!shaderPath.EndsWith(".shader", StringComparison.OrdinalIgnoreCase) || AssetDatabase.LoadAssetAtPath<Shader>(shaderPath) == null) throw new ArgumentException("shaderPath must reference a loadable Shader asset.");
+            if (!materialPath.EndsWith(".mat", StringComparison.OrdinalIgnoreCase) || AssetDatabase.LoadAssetAtPath<Material>(materialPath) == null) throw new ArgumentException("target.materialPath must reference a loadable Material asset.");
             if (string.IsNullOrWhiteSpace(targetPath) || string.IsNullOrWhiteSpace(cameraPath)) throw new ArgumentException("Validation target and camera paths are required.");
 
             var sessionId = Guid.NewGuid().ToString("N");
             var session = new ValidationSessionRecord
             {
                 sessionId = sessionId,
+                runId = TryGetRunId(args) ?? "unscoped",
                 scenePath = scenePath,
                 cameraPath = cameraPath,
                 targetPath = targetPath,
-                shaderPath = shaderPath,
+                materialPath = materialPath,
                 width = GetInt(profile, "width", 1024, 64, 4096),
                 height = GetInt(profile, "height", 1024, 64, 4096),
                 minAverageLuminance = GetFloat(profile, "minAverageLuminance", 0f, 0f, 1f),
@@ -1316,52 +1282,151 @@ namespace UnityMcp.Editor
                 createdAtUtc = DateTime.UtcNow.ToString("o")
             };
             ValidationSessions[sessionId] = session;
+            var statePath = WriteRunArtifact(args, "validation/" + sessionId + "/session-state.json", JsonSerializer.Serialize(session, JsonOptions));
             var path = WriteRunArtifact(args, "validation/" + sessionId + "/session-manifest.json", JsonSerializer.Serialize(new
             {
                 sessionId,
                 createdAtUtc = session.createdAtUtc,
                 validationScene = new { scenePath, cameraPath, width = session.width, height = session.height },
-                target = new { objectPath = targetPath, shaderPath },
+                target = new { objectPath = targetPath, materialPath },
                 criteria = new { session.minAverageLuminance, session.minNonBackgroundRatio },
-                sceneMutation = "The scene is opened additively. Capture creates in-memory material copies from the target Renderer, replaces only their Shader, restores the original materials, and never saves the scene."
+                statePath,
+                sceneMutation = "The scene is opened additively, generated material binding is restored after every capture, and the scene is never saved."
             }, JsonOptions));
+            record.artifacts.Add(statePath);
             record.artifacts.Add(path);
-            return new { validationSessionId = sessionId, manifest = new { path, contentHash = Hash(File.ReadAllText(path)) }, status = "ready", validationScene = new { scenePath, cameraPath }, target = new { objectPath = targetPath, shaderPath } };
+            return new { validationSessionId = sessionId, manifest = new { path, contentHash = Hash(File.ReadAllText(path)) }, state = new { path = statePath, contentHash = Hash(File.ReadAllText(statePath)) }, status = "ready", validationScene = new { scenePath, cameraPath }, target = new { objectPath = targetPath, materialPath } };
         }
 
         private static object CaptureValidation(JsonElement args, JobRecord record)
         {
             var sessionId = RequireString(args, "validationSessionId");
-            if (!ValidationSessions.TryGetValue(sessionId, out var session)) throw new ArgumentException("Unknown validationSessionId. Validation sessions are invalidated by a Unity domain reload; create a new session.");
+            var session = ResolveValidationSession(sessionId, TryGetRunId(args));
+            var captures = RequireCaptureRequests(args);
             var scene = EditorSceneManager.OpenScene(session.scenePath, OpenSceneMode.Additive);
             var previousActiveScene = EditorSceneManager.GetActiveScene();
-            Material[] originalMaterials = null;
-            Material[] temporaryMaterials = null;
-            RenderTexture renderTexture = null;
-            Texture2D image = null;
             try
             {
                 var targetObject = FindGameObject(scene, session.targetPath) ?? throw new ArgumentException("Validation target was not found in scene: " + session.targetPath);
                 var renderer = targetObject.GetComponent<Renderer>() ?? throw new ArgumentException("Validation target has no Renderer: " + session.targetPath);
                 var cameraObject = FindGameObject(scene, session.cameraPath) ?? throw new ArgumentException("Validation camera was not found in scene: " + session.cameraPath);
                 var camera = cameraObject.GetComponent<Camera>() ?? throw new ArgumentException("Validation camera has no Camera component: " + session.cameraPath);
-                var shader = AssetDatabase.LoadAssetAtPath<Shader>(session.shaderPath) ?? throw new ArgumentException("Validation Shader could not be loaded: " + session.shaderPath);
-
-                originalMaterials = renderer.sharedMaterials;
-                temporaryMaterials = new Material[Math.Max(1, originalMaterials.Length)];
-                for (var index = 0; index < temporaryMaterials.Length; index++)
+                var material = AssetDatabase.LoadAssetAtPath<Material>(session.materialPath) ?? throw new ArgumentException("Validation material could not be loaded: " + session.materialPath);
+                var originalMaterials = renderer.sharedMaterials;
+                var results = new List<object>();
+                var allPassed = true;
+                foreach (var capture in captures)
                 {
-                    // Preserve the test material's compatible values/textures when possible, but never mutate its asset.
-                    temporaryMaterials[index] = originalMaterials.Length > index && originalMaterials[index] != null
-                        ? new Material(originalMaterials[index])
-                        : new Material(shader);
-                    temporaryMaterials[index].shader = shader;
-                    temporaryMaterials[index].name = "AI Shader Validation Temporary Material";
-                    temporaryMaterials[index].hideFlags = HideFlags.HideAndDontSave;
+                    var bindingMode = GetString(capture, "bindingMode") ?? "generated_material";
+                    if (bindingMode != "generated_material" && bindingMode != "preserve_original") throw new ArgumentException("captures[].bindingMode must be generated_material or preserve_original.");
+                    var captureName = SafeCaptureName(GetString(capture, "captureName") ?? bindingMode);
+                    var boundGeneratedMaterial = bindingMode == "generated_material";
+                    try
+                    {
+                        if (boundGeneratedMaterial)
+                        {
+                            var assignedMaterials = new Material[Math.Max(1, originalMaterials.Length)];
+                            for (var index = 0; index < assignedMaterials.Length; index++) assignedMaterials[index] = material;
+                            renderer.sharedMaterials = assignedMaterials;
+                        }
+                        EditorSceneManager.SetActiveScene(scene);
+                        var screenshot = RenderValidationCapture(camera, session, sessionId, captureName, args, out var statistics);
+                        var decision = statistics.nonBackgroundRatio >= session.minNonBackgroundRatio && statistics.averageLuminance >= session.minAverageLuminance ? "pass" : "revise";
+                        allPassed &= decision == "pass";
+                        results.Add(new { captureName, bindingMode, boundMaterialPath = boundGeneratedMaterial ? session.materialPath : (string)null, originalMaterialPaths = originalMaterials.Select(AssetDatabase.GetAssetPath).ToArray(), restored = true, decision, screenshot, statistics });
+                        // 截图路径已作为 capture 结果返回，报告工件会持久化整个捕获清单。
+                    }
+                    finally
+                    {
+                        renderer.sharedMaterials = originalMaterials;
+                    }
                 }
-                renderer.sharedMaterials = temporaryMaterials;
-                EditorSceneManager.SetActiveScene(scene);
+                var reportPath = WriteRunArtifact(args, "validation/" + sessionId + "/captures/validation-report.json", JsonSerializer.Serialize(new
+                {
+                    capturedAtUtc = DateTime.UtcNow.ToString("o"),
+                    validationScene = new { session.scenePath, session.cameraPath },
+                    target = new { session.targetPath, session.materialPath },
+                    captures = results,
+                    criteria = new { session.minAverageLuminance, session.minNonBackgroundRatio },
+                    automaticDecisionScope = "Pixel thresholds establish only non-empty render evidence. Screenshot review and capture hash comparison determine material response."
+                }, JsonOptions));
+                record.artifacts.Add(reportPath);
+                return new { status = allPassed ? "passed" : "revise", decision = allPassed ? "pass" : "revise", validationSessionId = sessionId, captures = results.ToArray(), report = new { path = reportPath, contentHash = Hash(File.ReadAllText(reportPath)) } };
+            }
+            finally
+            {
+                if (scene.IsValid()) EditorSceneManager.CloseScene(scene, true);
+                if (previousActiveScene.IsValid() && previousActiveScene.isLoaded) EditorSceneManager.SetActiveScene(previousActiveScene);
+            }
+        }
 
+        private static object CreateShaderCheckpoint(JsonElement args, JobRecord record)
+        {
+            var decision = RequireString(args, "decision");
+            if (decision != "pass" && decision != "revise" && decision != "blocked")
+                throw new ArgumentException("decision must be pass, revise, or blocked.");
+            if (!args.TryGetProperty("assetRevisions", out var revisions)
+                || revisions.ValueKind != JsonValueKind.Array
+                || !revisions.EnumerateArray().Any())
+                throw new ArgumentException("assetRevisions must be a non-empty array.");
+
+            var checkpointId = Guid.NewGuid().ToString("N");
+            var manifestPath = WriteRunArtifact(args, "checkpoints/" + checkpointId + "/manifest.json", JsonSerializer.Serialize(new
+            {
+                checkpointId,
+                decision,
+                createdAtUtc = DateTime.UtcNow.ToString("o"),
+                assetRevisions = revisions.EnumerateArray().Select(value => new
+                {
+                    path = RequireString(value, "path"),
+                    revision = RequireString(value, "revision")
+                }).ToArray()
+            }, JsonOptions));
+            record.artifacts.Add(manifestPath);
+            return new { checkpointId, decision, manifest = new { path = manifestPath, contentHash = Hash(File.ReadAllText(manifestPath)) } };
+        }
+
+        private static ValidationSessionRecord ResolveValidationSession(string sessionId, string requestedRunId)
+        {
+            if (ValidationSessions.TryGetValue(sessionId, out var session)) return session;
+            var runId = requestedRunId ?? "unscoped";
+            var statePath = RunsRoot + runId + "/validation/" + sessionId + "/session-state.json";
+            if (!File.Exists(statePath)) throw new ArgumentException("Unknown validationSessionId. The session is absent from memory and no matching persisted session-state artifact was found for this run.");
+            using (var document = JsonDocument.Parse(File.ReadAllText(statePath)))
+            {
+                var state = document.RootElement;
+                session = new ValidationSessionRecord
+                {
+                    sessionId = RequireString(state, "sessionId"),
+                    runId = GetString(state, "runId") ?? runId,
+                    scenePath = RequireString(state, "scenePath"),
+                    cameraPath = RequireString(state, "cameraPath"),
+                    targetPath = RequireString(state, "targetPath"),
+                    materialPath = RequireString(state, "materialPath"),
+                    width = GetInt(state, "width", 1024, 64, 4096),
+                    height = GetInt(state, "height", 1024, 64, 4096),
+                    minAverageLuminance = GetFloat(state, "minAverageLuminance", 0f, 0f, 1f),
+                    minNonBackgroundRatio = GetFloat(state, "minNonBackgroundRatio", 0f, 0f, 1f),
+                    createdAtUtc = GetString(state, "createdAtUtc")
+                };
+            }
+            if (session == null || session.sessionId != sessionId) throw new ArgumentException("Persisted validation session state is invalid.");
+            ValidationSessions[sessionId] = session;
+            return session;
+        }
+
+        private static JsonElement[] RequireCaptureRequests(JsonElement args)
+        {
+            if (!args.TryGetProperty("captures", out var value) || value.ValueKind != JsonValueKind.Array || !value.EnumerateArray().Any()) throw new ArgumentException("captures must be a non-empty array.");
+            return value.EnumerateArray().ToArray();
+        }
+
+        private static object RenderValidationCapture(Camera camera, ValidationSessionRecord session, string sessionId, string captureName, JsonElement args, out ImageStatistics statistics)
+        {
+            RenderTexture renderTexture = null;
+            Texture2D image = null;
+            try
+            {
                 renderTexture = RenderTexture.GetTemporary(session.width, session.height, 24, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
                 var originalTarget = camera.targetTexture;
                 var originalActive = RenderTexture.active;
@@ -1374,63 +1439,26 @@ namespace UnityMcp.Editor
                     image.ReadPixels(new Rect(0, 0, session.width, session.height), 0, 0, false);
                     image.Apply(false, false);
                 }
-                finally
-                {
-                    camera.targetTexture = originalTarget;
-                    RenderTexture.active = originalActive;
-                }
-
+                finally { camera.targetTexture = originalTarget; RenderTexture.active = originalActive; }
                 var pixels = image.GetPixels32();
-                // Use a corner sample from the actual capture rather than camera.backgroundColor: skyboxes
-                // and post-processing can make the rendered background differ from the camera clear color.
-                var statistics = CalculateImageStatistics(pixels, session.width, session.height, pixels.Length > 0 ? (Color)pixels[0] : Color.clear);
-                var pngPath = RunsRoot + (TryGetRunId(args) ?? "unscoped") + "/validation/" + sessionId + "/captures/material-validation.png";
+                statistics = CalculateImageStatistics(pixels, session.width, session.height, pixels.Length > 0 ? (Color)pixels[0] : Color.clear);
+                var pngPath = RunsRoot + (TryGetRunId(args) ?? session.runId ?? "unscoped") + "/validation/" + sessionId + "/captures/" + captureName + ".png";
                 Directory.CreateDirectory(Path.GetDirectoryName(pngPath) ?? RunsRoot);
                 File.WriteAllBytes(pngPath, image.EncodeToPNG());
-                var hasVisibleContent = statistics.nonBackgroundRatio >= session.minNonBackgroundRatio;
-                var hasRequiredLuminance = statistics.averageLuminance >= session.minAverageLuminance;
-                var decision = hasVisibleContent && hasRequiredLuminance ? "pass" : "revise";
-                var reportPath = WriteRunArtifact(args, "validation/" + sessionId + "/captures/validation-report.json", JsonSerializer.Serialize(new
-                {
-                    decision,
-                    capturedAtUtc = DateTime.UtcNow.ToString("o"),
-                    validationScene = new { session.scenePath, session.cameraPath },
-                    target = new
-                    {
-                        session.targetPath,
-                        validationShaderPath = session.shaderPath,
-                        originalMaterialPaths = originalMaterials.Select(AssetDatabase.GetAssetPath).ToArray(),
-                        temporaryMaterialCount = temporaryMaterials.Length
-                    },
-                    capture = new { pngPath, contentHash = Hash(File.ReadAllBytes(pngPath)), width = session.width, height = session.height },
-                    statistics,
-                    criteria = new { session.minAverageLuminance, session.minNonBackgroundRatio },
-                    automaticDecisionScope = "Pixel thresholds only establish non-empty render evidence. Visual compliance with the requested material intent requires screenshot review."
-                }, JsonOptions));
-                record.artifacts.Add(pngPath);
-                record.artifacts.Add(reportPath);
-                return new { status = decision == "pass" ? "passed" : "revise", decision, validationSessionId = sessionId, screenshot = new { path = pngPath, contentHash = Hash(File.ReadAllBytes(pngPath)), width = session.width, height = session.height }, statistics, report = new { path = reportPath, contentHash = Hash(File.ReadAllText(reportPath)) } };
+                return new { path = pngPath, contentHash = Hash(File.ReadAllBytes(pngPath)), width = session.width, height = session.height };
             }
             finally
             {
-                if (originalMaterials != null)
-                {
-                    var targetObject = FindGameObject(scene, session.targetPath);
-                    var renderer = targetObject == null ? null : targetObject.GetComponent<Renderer>();
-                    if (renderer != null) renderer.sharedMaterials = originalMaterials;
-                }
-                if (temporaryMaterials != null)
-                {
-                    foreach (var material in temporaryMaterials)
-                    {
-                        if (material != null) UnityEngine.Object.DestroyImmediate(material);
-                    }
-                }
                 if (image != null) UnityEngine.Object.DestroyImmediate(image);
                 if (renderTexture != null) RenderTexture.ReleaseTemporary(renderTexture);
-                if (scene.IsValid()) EditorSceneManager.CloseScene(scene, true);
-                if (previousActiveScene.IsValid() && previousActiveScene.isLoaded) EditorSceneManager.SetActiveScene(previousActiveScene);
             }
+        }
+
+        private static string SafeCaptureName(string value)
+        {
+            var name = string.IsNullOrWhiteSpace(value) ? "capture" : value.Trim();
+            foreach (var invalid in Path.GetInvalidFileNameChars()) name = name.Replace(invalid, '_');
+            return name.Replace('/', '_').Replace('\\', '_');
         }
 
         private static GameObject FindGameObject(Scene scene, string hierarchyPath)
@@ -1502,7 +1530,7 @@ namespace UnityMcp.Editor
             var context = RequireProperty(args, "operationContext");
             if (string.IsNullOrEmpty(GetString(context, "runId"))) throw new UnauthorizedAccessException("operationContext.runId is required for generated asset writes.");
         }
-        private static void RequireReadPath(string path) { ValidatePath(path); if (!(path.StartsWith("Assets/", StringComparison.Ordinal) || path.StartsWith("Packages/", StringComparison.Ordinal) || path.StartsWith("ProjectSettings/", StringComparison.Ordinal) || path.StartsWith("Artifacts/", StringComparison.Ordinal) || path.StartsWith("Tests/", StringComparison.Ordinal))) throw new UnauthorizedAccessException("Path is outside project read roots."); }
+        private static void RequireReadPath(string path) { ValidatePath(path); if (!(path.StartsWith("Assets/", StringComparison.Ordinal) || path.StartsWith("Packages/", StringComparison.Ordinal) || path.StartsWith("ProjectSettings/", StringComparison.Ordinal) || path.StartsWith("Artifacts/", StringComparison.Ordinal))) throw new UnauthorizedAccessException("Path is outside project read roots."); }
         private static void ValidatePath(string path) { if (string.IsNullOrWhiteSpace(path) || Path.IsPathRooted(path) || path.Replace('\\', '/').Contains("../")) throw new UnauthorizedAccessException("Path must be project-relative and may not escape the project."); }
         private static JsonElement RequireProperty(JsonElement element, string name) { if (!element.TryGetProperty(name, out var value)) throw new ArgumentException("Missing required property: " + name); return value; }
         private static string RequireString(JsonElement element, string name) => GetString(element, name) ?? throw new ArgumentException("Missing required string: " + name);
@@ -1543,14 +1571,15 @@ namespace UnityMcp.Editor
             public int score;
         }
 
-        /// <summary>In-memory validation capture state. It is intentionally discarded by a Unity domain reload.</summary>
+        /// <summary>Validation state is cached in memory and persisted under its run artifact for domain-reload recovery.</summary>
         private sealed class ValidationSessionRecord
         {
             public string sessionId;
+            public string runId;
             public string scenePath;
             public string cameraPath;
             public string targetPath;
-            public string shaderPath;
+            public string materialPath;
             public int width;
             public int height;
             public float minAverageLuminance;

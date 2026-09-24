@@ -870,6 +870,16 @@ MarkupShaderGUIAuthoringRequest
 3. 最终 `PASS` 必须携带性能摘要，但由编译、工程契约与大模型视觉结论决定；性能评级不得否决视觉验收。
 4. 若性能风险需要修复，主 Skill 将其作为后续独立 Shader 优化循环的输入；优化后必须重新执行 Step 7、重新委派本子 Skill，再进入 Step 8。
 
+## MCP payload guardrails and session recovery
+
+Before calling `ensure_validation_scene` or `capture_validation`, complete this non-skippable request preflight:
+
+1. Assemble the full nested payload, then explicitly verify and echo `operationContext.runId`, `operationContext.skill`, `operationContext.codePlanId`, `idempotencyKey`, `validationProfile.scenePath`, `validationProfile.cameraPath`, `target.objectPath`, and `target.materialPath`. Empty objects, placeholder objects, and the legacy `shaderPath` substitute are forbidden.
+2. `capture_validation` must include a non-empty `captures` array. Each capture must declare a unique `captureName` and `bindingMode`: `preserve_original` for the reference capture and `generated_material` for response captures that bind the generated `.mat`.
+3. A validation failure caused by missing fields, types, or path validation immediately opens a circuit breaker for that tool category. Do not retry by changing only `idempotencyKey`; correct the payload and repeat preflight first. Two failures with the same root cause mark the round `BLOCKED` and require reporting the missing payload fields.
+4. After session creation, record `validationSessionId`, runId, the session manifest, and the persisted session-state artifact. After a domain reload, call capture using the same runId so the tool can restore session state; create a new session only when persisted state is missing or invalid. Never poll or reuse an unrecoverable old Job ID.
+5. Capture `preserve_original` first, followed by at least two uniquely named `generated_material` captures with meaningful parameter differences. Inspect material-binding/restoration evidence and compare PNG `contentHash` values. Identical reference and generated-material hashes indicate a no-response risk and require `REVISE`, never `PASS`.
+
 ## Step 8：固定测试场景验证与大模型验收循环
 
 本 Skill 的渲染验收必须使用项目内固定场景 [`AI Shader Authoring.unity`](../../../Tests/AI%20Shader%20Authoring.unity)。向 Unity MCP 传递 `validationProfile.scenePath` 时，必须使用唯一允许的 Unity 工程相对规范路径 `Packages/com.ai.shader-authoring/Tests/AI Shader Authoring.unity`；不得省略 `Packages/com.ai.shader-authoring/` 前缀，不得使用 `Tests/AI Shader Authoring.unity`、当前 Editor 打开的场景、临时创建的场景或任意用户场景作出 `PASS` 判定。调用前必须确认该精确路径存在且扩展名为 `.unity`；不存在时返回 `BLOCKED`，不得猜测或回退到其他场景。验收目标固定为该场景中名称精确为 `AIShader_Sphere` 的 `GameObject`；该对象可以是根节点，也可以位于任意层级的子节点。

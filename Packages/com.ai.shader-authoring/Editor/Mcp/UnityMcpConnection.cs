@@ -32,9 +32,11 @@ namespace UnityMcp.Editor
             Connected
         }
 
-        private const string ServerUrl = "ws://localhost:8080";
+        private const string DefaultServerHost = "127.0.0.1";
+        private const int DefaultServerPort = 8080;
+        private const string ServerHostPreferenceKey = "UnityMcp.ServerHost";
+        private const string ServerPortPreferenceKey = "UnityMcp.ServerPort";
         private const int MaxLogEntries = 1000;
-        private static readonly Uri ServerUriValue = new Uri(ServerUrl);
         private static readonly ConcurrentQueue<string> PendingMessages = new ConcurrentQueue<string>();
         private static readonly Queue<LogEntry> RecentLogs = new Queue<LogEntry>();
         private static readonly object SendLock = new object();
@@ -53,13 +55,15 @@ namespace UnityMcp.Editor
         public static bool IsConnected => isConnected && webSocket != null && webSocket.State == WebSocketState.Open;
         public static string CurrentEditorInstanceId => EditorInstanceId;
         public static string CurrentProjectPath => ProjectPath;
+        public static string ServerHost => EditorPrefs.GetString(ServerHostPreferenceKey, DefaultServerHost);
+        public static int ServerPort => EditorPrefs.GetInt(ServerPortPreferenceKey, DefaultServerPort);
         public static bool IsServiceEnabled => serviceEnabled;
         public static ServiceState State => !serviceEnabled
             ? ServiceState.Closed
             : IsConnected
                 ? ServiceState.Connected
                 : ServiceState.WaitingForConnection;
-        public static Uri ServerUri => ServerUriValue;
+        public static Uri ServerUri => BuildServerUri(ServerHost, ServerPort);
         public static string LastErrorMessage => lastErrorMessage;
         public static int LogCount => RecentLogs.Count;
 
@@ -90,6 +94,38 @@ namespace UnityMcp.Editor
         public static void RetryConnection()
         {
             StartService();
+        }
+
+        public static bool TryConfigureServerEndpoint(string host, string portText, out string errorMessage)
+        {
+            errorMessage = null;
+            host = (host ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(host) || host.IndexOf("://", StringComparison.Ordinal) >= 0 || host.IndexOf('/') >= 0 || host.IndexOf('?') >= 0 || host.IndexOf('#') >= 0)
+            {
+                errorMessage = "服务器地址只能填写主机名、IPv4 或 IPv6 地址，不要包含 ws://、路径或查询参数。";
+                return false;
+            }
+
+            int port;
+            if (!int.TryParse(portText, out port) || port < 1 || port > 65535)
+            {
+                errorMessage = "端口必须是 1 到 65535 之间的整数。";
+                return false;
+            }
+
+            try { BuildServerUri(host, port); }
+            catch (Exception exception)
+            {
+                errorMessage = "服务器地址无效：" + exception.Message;
+                return false;
+            }
+
+            EditorPrefs.SetString(ServerHostPreferenceKey, host);
+            EditorPrefs.SetInt(ServerPortPreferenceKey, port);
+            lastErrorMessage = string.Empty;
+            Disconnect();
+            if (serviceEnabled) StartService();
+            return true;
         }
 
         public static void Disconnect()
@@ -146,7 +182,7 @@ namespace UnityMcp.Editor
             {
                 cancellation = new CancellationTokenSource();
                 webSocket = new ClientWebSocket();
-                await webSocket.ConnectAsync(ServerUriValue, cancellation.Token);
+                await webSocket.ConnectAsync(ServerUri, cancellation.Token);
                 if (!serviceEnabled)
                 {
                     DisconnectSocketOnly();
@@ -433,6 +469,14 @@ namespace UnityMcp.Editor
             return string.Join("/", names);
         }
 
+        private static Uri BuildServerUri(string host, int port)
+        {
+            var uriHost = host != null && host.IndexOf(':') >= 0 && !host.StartsWith("[", StringComparison.Ordinal)
+                ? "[" + host + "]"
+                : host;
+            return new Uri("ws://" + uriHost + ":" + port + "/", UriKind.Absolute);
+        }
+
         private static string GetOrCreateEditorInstanceId()
         {
             const string key = "UnityMcp.EditorInstanceId";
@@ -470,6 +514,19 @@ public static class UnityMcpCommandExecutor
                 var options = new CompilerParameters { GenerateInMemory = true };
                 options.ReferencedAssemblies.Add(typeof(UnityEngine.Object).Assembly.Location);
                 options.ReferencedAssemblies.Add(typeof(UnityEditor.Editor).Assembly.Location);
+
+                // 动态命令需要和 Editor 域共享完整的 UnityEngine 模块；仅引用旧的 UnityEngine 门面程序集会缺少 Scene、Material 等类型。
+                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies()
+                    .Where(candidate => candidate.GetName().Name.StartsWith("UnityEngine", StringComparison.OrdinalIgnoreCase)
+                        && !string.IsNullOrWhiteSpace(candidate.Location)))
+                {
+                    options.ReferencedAssemblies.Add(assembly.Location);
+                }
+
+                // CodeDom 编译器不会自动补齐 LINQ 扩展方法所需的 System.Core 引用。
+                var systemCoreAssembly = typeof(Enumerable).Assembly;
+                if (!string.IsNullOrWhiteSpace(systemCoreAssembly.Location))
+                    options.ReferencedAssemblies.Add(systemCoreAssembly.Location);
 
                 // Unity 2021+ 的 Editor 程序集依赖 netstandard；运行时编译命令时必须显式传入其实际加载的程序集。
                 var netStandardAssembly = AppDomain.CurrentDomain.GetAssemblies()

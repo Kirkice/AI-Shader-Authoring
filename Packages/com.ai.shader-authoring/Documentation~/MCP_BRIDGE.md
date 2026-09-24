@@ -1,16 +1,16 @@
 # Unity MCP WebSocket Integration
 
-Unity MCP 使用外部 [`unity-mcp-server`](../../../Tools/unity-mcp-server/src/index.ts:1) 作为标准输入输出 MCP 服务，并由 Unity Editor 端的 [`UnityMcpConnection`](../Editor/Mcp/UnityMcpConnection.cs:27) 建立本机 WebSocket 连接。
+Unity MCP 使用外部 [`unity-mcp-server`](../../../Tools/unity-mcp-server/src/index.ts:1) 作为标准输入输出 MCP 服务，并由 Unity Editor 端的 [`UnityMcpConnection`](../Editor/Mcp/UnityMcpConnection.cs:27) 建立 WebSocket 连接。
 
 ```text
-Agent MCP stdio session ⇄ bound unity-mcp-server ⇄ ws://localhost:8080 ⇄ identified Unity Editor
+Agent MCP stdio session ⇄ bound unity-mcp-server ⇄ configured ws://host:port ⇄ identified Unity Editor
 ```
 
 ## Unity Editor 插件
 
 插件在 Unity 加载时启动，并会：
 
-- 连接 `ws://localhost:8080`；
+- 连接 Dashboard 保存的 `ws://主机:端口`（默认 `ws://127.0.0.1:8080`）；
 - 首次连接发送 `hello`，注册会话级 `editorInstanceId`、项目路径、Unity 版本和进程 ID；
 - 每秒发送带 `editorInstanceId` 与项目路径的编辑器状态；
 - 转发 Unity Console 日志；
@@ -18,7 +18,24 @@ Agent MCP stdio session ⇄ bound unity-mcp-server ⇄ ws://localhost:8080 ⇄ i
 - 接收人工批准的编辑器命令；
 - 断开后每 5 秒自动重连。
 
-可从 [`Unity MCP/Dashboard`](../Editor/Mcp/UnityMcpWindow.cs:84) 查看当前 Editor ID、项目路径和连接状态，或手动请求重连。
+可从 [`Unity MCP/Dashboard`](../Editor/Mcp/UnityMcpWindow.cs:84) 查看当前 Editor ID、项目路径和连接状态；也可直接填写 Node 服务的主机名/IP 与端口。点击“应用”后，设置会通过 `EditorPrefs` 持久化，Unity 客户端将断开并自动重新连接到新端点。主机字段仅填写主机名、IPv4 或 IPv6 地址，不要添加 `ws://`、路径或查询参数。
+
+## WebSocket 端点配置
+
+Node 服务通过环境变量配置监听端点：
+
+- `UNITY_MCP_WS_HOST`：监听主机，默认 `127.0.0.1`；需要局域网访问时可设置为具体网卡 IP 或 `0.0.0.0`。
+- `UNITY_MCP_WS_PORT`：监听端口，默认 `8080`，范围 `1`–`65535`。
+
+例如在局域网中让 Unity 连接 `192.168.1.20:8090`：
+
+```powershell
+$env:UNITY_MCP_WS_HOST = "192.168.1.20"
+$env:UNITY_MCP_WS_PORT = "8090"
+node H:/tmp/URP-AI/Tools/unity-mcp-server/build/index.js
+```
+
+然后在 Unity Dashboard 中填写服务器地址 `192.168.1.20`、端口 `8090` 并点击“应用”。对外网或不可信网络开放端口存在高风险；该服务可执行受信任客户端请求，建议仅使用回环地址、受控局域网或受保护的隧道。
 
 ## 多 Agent / 多 Unity 绑定
 

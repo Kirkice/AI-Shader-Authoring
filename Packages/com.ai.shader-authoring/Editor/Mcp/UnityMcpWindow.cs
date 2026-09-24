@@ -41,13 +41,16 @@ namespace UnityMcp.Editor
         };
 
         private const float OuterPadding = 14f;
-        private const float StatusCardHeight = 196f;
+        private const float StatusCardHeight = 254f;
         private const float ToolCardHeight = 62f;
         private const float ToolInspectorHeight = 104f;
         private const float ToolGap = 8f;
 
         private readonly bool[] toolExpanded = new bool[Tools.Length];
         private Vector2 windowScroll;
+        private string serverHost;
+        private string serverPort;
+        private string endpointConfigurationError;
 
         private GUIStyle eyebrowStyle;
         private GUIStyle headingStyle;
@@ -65,6 +68,8 @@ namespace UnityMcp.Editor
         private Texture2D panelTexture;
         private Texture2D selectedPanelTexture;
         private Texture2D secondaryButtonTexture;
+        private Texture2D secondaryButtonHoverTexture;
+        private Texture2D secondaryButtonActiveTexture;
         private Texture2D successTexture;
         private Texture2D warningTexture;
         private Texture2D errorTexture;
@@ -92,7 +97,10 @@ namespace UnityMcp.Editor
         private void OnEnable()
         {
             toolExpanded[0] = true;
-            CreateStyles();
+            serverHost = UnityMcpConnection.ServerHost;
+            serverPort = UnityMcpConnection.ServerPort.ToString();
+            endpointConfigurationError = string.Empty;
+            // Domain Reload 期间 EditorStyles 可能尚未完成初始化；首帧改由 OnGUI 延迟创建皮肤。
             EditorApplication.update += Repaint;
         }
 
@@ -102,6 +110,8 @@ namespace UnityMcp.Editor
             DestroyTexture(ref panelTexture);
             DestroyTexture(ref selectedPanelTexture);
             DestroyTexture(ref secondaryButtonTexture);
+            DestroyTexture(ref secondaryButtonHoverTexture);
+            DestroyTexture(ref secondaryButtonActiveTexture);
             DestroyTexture(ref successTexture);
             DestroyTexture(ref warningTexture);
             DestroyTexture(ref errorTexture);
@@ -109,10 +119,14 @@ namespace UnityMcp.Editor
 
         private void OnGUI()
         {
-            // Domain reloads can leave textures alive while GUIStyle instances are reset. Rebuild the
-            // entire skin whenever any style/texture dependency is missing, so GUI.Label never receives
-            // a null style during the first repaint after compilation.
-            if (!HasCompleteSkin()) CreateStyles();
+            // Domain Reload 期间 EditorStyles 的 getter 可能抛出异常或返回 null。先完成安全探测，
+            // 失败时保留现有皮肤并等待下一次 Repaint，避免在窗口启用阶段中断 Editor GUI 生命周期。
+            if (!HasCompleteSkin() && !TryCreateStyles())
+            {
+                EditorGUI.DrawRect(new Rect(0f, 0f, position.width, position.height), new Color(0.035f, 0.025f, 0.055f));
+                Repaint();
+                return;
+            }
 
             var canvas = new Rect(0f, 0f, position.width, position.height);
             EditorGUI.DrawRect(canvas, new Color(0.035f, 0.025f, 0.055f));
@@ -156,6 +170,27 @@ namespace UnityMcp.Editor
             GUI.Label(new Rect(rect.x + 15f, rect.y + 66f, rect.width - 30f, 32f), summary, bodyStyle);
             GUI.Label(new Rect(rect.x + 15f, rect.y + 104f, rect.width - 30f, 19f), GetEndpointDisplay(), endpointStyle);
             GUI.Label(new Rect(rect.x + 15f, rect.y + 123f, rect.width - 30f, 19f), "Editor ID: " + UnityMcpConnection.CurrentEditorInstanceId, endpointStyle);
+
+            GUI.Label(new Rect(rect.x + 15f, rect.y + 148f, 72f, 19f), "服务器地址", eyebrowStyle);
+            serverHost = GUI.TextField(new Rect(rect.x + 90f, rect.y + 145f, rect.width - 235f, 22f), serverHost ?? string.Empty);
+            GUI.Label(new Rect(rect.xMax - 138f, rect.y + 148f, 30f, 19f), "端口", eyebrowStyle);
+            serverPort = GUI.TextField(new Rect(rect.xMax - 104f, rect.y + 145f, 52f, 22f), serverPort ?? string.Empty);
+            if (GUI.Button(new Rect(rect.xMax - 46f, rect.y + 145f, 31f, 22f), "应用", secondaryButtonStyle))
+            {
+                string error;
+                if (UnityMcpConnection.TryConfigureServerEndpoint(serverHost, serverPort, out error))
+                {
+                    serverHost = UnityMcpConnection.ServerHost;
+                    serverPort = UnityMcpConnection.ServerPort.ToString();
+                    endpointConfigurationError = string.Empty;
+                }
+                else endpointConfigurationError = error;
+            }
+
+            if (!string.IsNullOrEmpty(endpointConfigurationError))
+                GUI.Label(new Rect(rect.x + 15f, rect.y + 171f, rect.width - 30f, 32f), endpointConfigurationError, bodyStyle);
+            else
+                GUI.Label(new Rect(rect.x + 15f, rect.y + 171f, rect.width - 30f, 32f), "填写 Node 服务监听的主机名/IP 与端口；应用后会保存设置并重新连接。", bodyStyle);
 
             const float gap = 8f;
             var actionsY = rect.yMax - 35f;
@@ -231,7 +266,8 @@ namespace UnityMcp.Editor
         private void ShowMcpInfo()
         {
             var endpoint = UnityMcpConnection.ServerUri;
-            var message = "WebSocket 终端：" + endpoint + "\n\n"
+            var message = "WebSocket 终端：" + endpoint + "\n"
+                + "连接地址与端口可在 Dashboard 中编辑，并会保存到 EditorPrefs。\n\n"
                 + "状态：" + GetStateDescription() + "\n"
                 + "Editor ID：" + UnityMcpConnection.CurrentEditorInstanceId + "\n"
                 + "项目路径：" + UnityMcpConnection.CurrentProjectPath + "\n"
@@ -290,6 +326,8 @@ namespace UnityMcp.Editor
             return panelTexture != null
                 && selectedPanelTexture != null
                 && secondaryButtonTexture != null
+                && secondaryButtonHoverTexture != null
+                && secondaryButtonActiveTexture != null
                 && successTexture != null
                 && warningTexture != null
                 && errorTexture != null
@@ -308,11 +346,32 @@ namespace UnityMcp.Editor
                 && authorizationStyle != null;
         }
 
-        private void CreateStyles()
+        private bool TryCreateStyles()
         {
+            GUIStyle miniBoldLabel;
+            GUIStyle boldLabel;
+            GUIStyle miniLabel;
+            GUIStyle miniButton;
+            try
+            {
+                miniBoldLabel = EditorStyles.miniBoldLabel;
+                boldLabel = EditorStyles.boldLabel;
+                miniLabel = EditorStyles.miniLabel;
+                miniButton = EditorStyles.miniButton;
+            }
+            catch (System.NullReferenceException)
+            {
+                return false;
+            }
+
+            if (miniBoldLabel == null || boldLabel == null || miniLabel == null || miniButton == null)
+                return false;
+
             DestroyTexture(ref panelTexture);
             DestroyTexture(ref selectedPanelTexture);
             DestroyTexture(ref secondaryButtonTexture);
+            DestroyTexture(ref secondaryButtonHoverTexture);
+            DestroyTexture(ref secondaryButtonActiveTexture);
             DestroyTexture(ref successTexture);
             DestroyTexture(ref warningTexture);
             DestroyTexture(ref errorTexture);
@@ -321,70 +380,72 @@ namespace UnityMcp.Editor
             panelTexture = MakeTexture(new Color(0.075f, 0.045f, 0.105f));
             selectedPanelTexture = MakeTexture(new Color(0.13f, 0.065f, 0.18f));
             secondaryButtonTexture = MakeTexture(new Color(0.56f, 0.12f, 0.48f));
+            secondaryButtonHoverTexture = MakeTexture(new Color(0.76f, 0.16f, 0.62f));
+            secondaryButtonActiveTexture = MakeTexture(new Color(0.37f, 0.05f, 0.34f));
             successTexture = MakeTexture(new Color(0.0f, 0.42f, 0.27f));
             warningTexture = MakeTexture(new Color(0.45f, 0.27f, 0.06f));
             errorTexture = MakeTexture(new Color(0.50f, 0.05f, 0.20f));
 
-            eyebrowStyle = new GUIStyle(EditorStyles.miniBoldLabel)
+            eyebrowStyle = new GUIStyle(miniBoldLabel)
             {
                 fontSize = 10,
                 normal = { textColor = new Color(0.75f, 0.49f, 1.0f) }
             };
-            headingStyle = new GUIStyle(EditorStyles.boldLabel)
+            headingStyle = new GUIStyle(boldLabel)
             {
                 fontSize = 13,
                 normal = { textColor = new Color(0.93f, 0.91f, 0.96f) }
             };
             statusStyle = new GUIStyle(headingStyle) { fontSize = 15 };
-            bodyStyle = new GUIStyle(EditorStyles.miniLabel)
+            bodyStyle = new GUIStyle(miniLabel)
             {
                 fontSize = 11,
                 wordWrap = true,
                 normal = { textColor = new Color(0.79f, 0.75f, 0.84f) }
             };
-            endpointStyle = new GUIStyle(EditorStyles.miniLabel)
+            endpointStyle = new GUIStyle(miniLabel)
             {
                 fontSize = 11,
                 normal = { textColor = new Color(0.49f, 0.83f, 0.96f) }
             };
-            chipStyle = new GUIStyle(EditorStyles.miniBoldLabel)
+            chipStyle = new GUIStyle(miniBoldLabel)
             {
                 alignment = TextAnchor.MiddleCenter,
                 fontSize = 9,
                 normal = { textColor = new Color(0.93f, 1.0f, 0.97f) }
             };
-            secondaryButtonStyle = new GUIStyle(EditorStyles.miniButton)
+            secondaryButtonStyle = new GUIStyle(miniButton)
             {
                 fontSize = 11,
                 fontStyle = FontStyle.Bold,
                 normal = { background = secondaryButtonTexture, textColor = new Color(1.0f, 0.93f, 0.99f) },
-                hover = { background = MakeTexture(new Color(0.76f, 0.16f, 0.62f)), textColor = Color.white },
-                active = { background = MakeTexture(new Color(0.37f, 0.05f, 0.34f)), textColor = new Color(1.0f, 0.82f, 0.95f) }
+                hover = { background = secondaryButtonHoverTexture, textColor = Color.white },
+                active = { background = secondaryButtonActiveTexture, textColor = new Color(1.0f, 0.82f, 0.95f) }
             };
-            toolTitleStyle = new GUIStyle(EditorStyles.miniBoldLabel)
+            toolTitleStyle = new GUIStyle(miniBoldLabel)
             {
                 fontSize = 11,
                 clipping = TextClipping.Clip,
                 normal = { textColor = new Color(0.49f, 0.83f, 0.96f) }
             };
-            toolSummaryStyle = new GUIStyle(EditorStyles.miniLabel)
+            toolSummaryStyle = new GUIStyle(miniLabel)
             {
                 fontSize = 10,
                 clipping = TextClipping.Clip,
                 normal = { textColor = new Color(0.77f, 0.72f, 0.82f) }
             };
-            sectionStyle = new GUIStyle(EditorStyles.boldLabel)
+            sectionStyle = new GUIStyle(boldLabel)
             {
                 fontSize = 13,
                 normal = { textColor = new Color(1.0f, 0.30f, 0.66f) }
             };
-            parameterStyle = new GUIStyle(EditorStyles.miniLabel)
+            parameterStyle = new GUIStyle(miniLabel)
             {
                 fontSize = 10,
                 clipping = TextClipping.Clip,
                 normal = { textColor = new Color(1.0f, 0.82f, 0.38f) }
             };
-            readOnlyStyle = new GUIStyle(EditorStyles.miniBoldLabel)
+            readOnlyStyle = new GUIStyle(miniBoldLabel)
             {
                 alignment = TextAnchor.MiddleCenter,
                 fontSize = 9,
@@ -394,6 +455,7 @@ namespace UnityMcp.Editor
             {
                 normal = { textColor = new Color(1.0f, 0.82f, 0.38f) }
             };
+            return true;
         }
 
         private static Texture2D MakeTexture(Color color)

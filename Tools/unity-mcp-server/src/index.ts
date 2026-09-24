@@ -52,6 +52,8 @@ interface PendingUnityRequest {
 class UnityMCPServer {
   private server: Server;
   private wsServer: WebSocketServer;
+  private readonly websocketHost = process.env.UNITY_MCP_WS_HOST || '127.0.0.1';
+  private readonly websocketPort = this.readWebSocketPort(process.env.UNITY_MCP_WS_PORT);
   private readonly agentSessionId = process.env.UNITY_MCP_AGENT_SESSION_ID || randomUUID();
   private targetEditorInstanceId = process.env.UNITY_MCP_TARGET_EDITOR_ID || '';
   private readonly targetProjectPath = this.normalizePath(process.env.UNITY_MCP_TARGET_PROJECT_PATH || '');
@@ -84,8 +86,8 @@ class UnityMCPServer {
       }
     );
 
-    // Initialize WebSocket Server for Unity communication
-    this.wsServer = new WebSocketServer({ port: 8080 });
+    // Initialize WebSocket Server for Unity communication.
+    this.wsServer = new WebSocketServer({ host: this.websocketHost, port: this.websocketPort });
     this.setupWebSocket();
     this.setupTools();
 
@@ -98,10 +100,10 @@ class UnityMCPServer {
   }
 
   private setupWebSocket() {
-    console.error('[Unity MCP] WebSocket server starting on port 8080');
+    console.error(`[Unity MCP] WebSocket server starting on ${this.websocketHost}:${this.websocketPort}`);
     
     this.wsServer.on('listening', () => {
-      console.error('[Unity MCP] WebSocket server is listening for connections');
+      console.error(`[Unity MCP] WebSocket server is listening on ${this.websocketHost}:${this.websocketPort}`);
     });
 
     this.wsServer.on('error', (error) => {
@@ -130,6 +132,15 @@ class UnityMCPServer {
       ws.on('error', (error) => console.error('[Unity MCP] WebSocket error:', error));
       ws.on('close', () => this.handleEditorDisconnected(client));
     });
+  }
+
+  private readWebSocketPort(value: string | undefined): number {
+    if (!value) return 8080;
+    const port = Number(value);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      throw new Error('UNITY_MCP_WS_PORT must be an integer between 1 and 65535.');
+    }
+    return port;
   }
 
   private handleUnityMessage(client: UnityEditorClient, message: any) {
@@ -667,8 +678,19 @@ class UnityMCPServer {
     const jobContext = {
       type: 'object',
       properties: {
-        operationContext: { type: 'object', description: 'Audit context containing runId, skill, codePlanId, and optional authorizationGrantId.' },
-        idempotencyKey: { type: 'string' }
+        operationContext: {
+          type: 'object',
+          description: 'Audit context containing the non-empty runId, skill, codePlanId, and optional authorizationGrantId.',
+          properties: {
+            runId: { type: 'string', minLength: 1 },
+            skill: { type: 'string', minLength: 1 },
+            codePlanId: { type: 'string', minLength: 1 },
+            authorizationGrantId: { type: 'string', minLength: 1 }
+          },
+          required: ['runId', 'skill', 'codePlanId'],
+          additionalProperties: false
+        },
+        idempotencyKey: { type: 'string', minLength: 1 }
       },
       additionalProperties: true
     };
@@ -681,10 +703,115 @@ class UnityMCPServer {
       { name: 'query_shader_knowledge_base', description: 'Retrieve persisted Shader examples, function cards and capabilities.', category: 'Shader Knowledge', inputSchema: { type: 'object', properties: { knowledgeBaseVersion: { type: 'string' }, query: { type: 'object' } }, additionalProperties: true } },
       { name: 'inspect_shader_structure', description: 'Read a Shader asset into structured properties, passes, entries, includes and render states.', category: 'Shader Analysis', inputSchema: { type: 'object', properties: { assetPath: { type: 'string' }, expectedRevision: { type: 'string' } }, required: ['assetPath'], additionalProperties: true } },
       { name: 'get_asset_revision', description: 'Read content revisions for project-relative assets.', category: 'Shader Analysis', inputSchema: { type: 'object', properties: { assetPaths: { type: 'array', items: { type: 'string' } } }, required: ['assetPaths'], additionalProperties: false } },
-      { name: 'write_generated_text_asset', description: 'Write one revision-protected generated text asset under Assets/AIShader/Generated only.', category: 'Shader Assets', inputSchema: { ...jobContext, properties: { ...jobContext.properties, asset: { type: 'object', properties: { path: { type: 'string' }, contentUtf8: { type: 'string' }, baseRevision: { type: 'string' }, createPolicy: { type: 'string', enum: ['create_only', 'update_only', 'create_or_update'] } }, required: ['path', 'contentUtf8', 'baseRevision'] }, codePlan: { type: 'object' } }, required: ['asset', 'codePlan'] } },
+      {
+        name: 'write_generated_text_asset',
+        description: 'Write one revision-protected generated text asset under Assets/AIShader/Generated only.',
+        category: 'Shader Assets',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            operationContext: {
+              type: 'object',
+              description: 'Audit context for the authorized Shader write. codePlanId must match codePlan.codePlanId.',
+              properties: {
+                runId: { type: 'string', minLength: 1 },
+                skill: { type: 'string', minLength: 1 },
+                codePlanId: { type: 'string', minLength: 1 },
+                authorizationGrantId: { type: 'string', minLength: 1 }
+              },
+              required: ['runId', 'skill', 'codePlanId'],
+              additionalProperties: false
+            },
+            idempotencyKey: { type: 'string', minLength: 1 },
+            asset: {
+              type: 'object',
+              properties: {
+                path: { type: 'string', minLength: 1 },
+                contentUtf8: { type: 'string' },
+                baseRevision: { type: 'string', minLength: 1 },
+                createPolicy: { type: 'string', enum: ['create_only', 'update_only', 'create_or_update'] }
+              },
+              required: ['path', 'contentUtf8', 'baseRevision'],
+              additionalProperties: false
+            },
+            codePlan: {
+              type: 'object',
+              description: 'Authorized write plan. codePlanId must match operationContext.codePlanId and allowedFiles must contain the exact target path.',
+              properties: {
+                codePlanId: { type: 'string', minLength: 1 },
+                allowedFiles: { type: 'array', minItems: 1, items: { type: 'string', minLength: 1 } },
+                baselineRevision: { type: 'string' },
+                objective: { type: 'string' }
+              },
+              required: ['codePlanId', 'allowedFiles'],
+              additionalProperties: true
+            }
+          },
+          required: ['operationContext', 'idempotencyKey', 'asset', 'codePlan'],
+          additionalProperties: false
+        }
+      },
       { name: 'refresh_and_compile_assets', description: 'Queue refresh and import for specified assets, returning structured compile evidence.', category: 'Shader Validation', inputSchema: { ...jobContext, properties: { ...jobContext.properties, assetPaths: { type: 'array', items: { type: 'string' } } }, required: ['assetPaths'] } },
-      { name: 'ensure_validation_scene', description: 'Queue isolated deterministic validation-session setup.', category: 'Shader Validation', inputSchema: { ...jobContext, properties: { ...jobContext.properties, validationProfile: { type: 'object' }, target: { type: 'object' } }, required: ['validationProfile', 'target'] } },
-      { name: 'capture_validation', description: 'Queue deterministic validation capture for an existing validation session.', category: 'Shader Validation', inputSchema: { ...jobContext, properties: { ...jobContext.properties, validationSessionId: { type: 'string' }, captures: { type: 'array' } }, required: ['validationSessionId', 'captures'] } },
+      {
+        name: 'ensure_validation_scene',
+        description: 'Queue isolated deterministic validation-session setup. The scene, camera, target Renderer, and Material paths are required.',
+        category: 'Shader Validation',
+        inputSchema: {
+          ...jobContext,
+          properties: {
+            ...jobContext.properties,
+            validationProfile: {
+              type: 'object',
+              properties: {
+                scenePath: { type: 'string', minLength: 1 },
+                cameraPath: { type: 'string', minLength: 1 },
+                width: { type: 'integer', minimum: 64, maximum: 4096 },
+                height: { type: 'integer', minimum: 64, maximum: 4096 },
+                minAverageLuminance: { type: 'number', minimum: 0, maximum: 1 },
+                minNonBackgroundRatio: { type: 'number', minimum: 0, maximum: 1 }
+              },
+              required: ['scenePath', 'cameraPath'],
+              additionalProperties: false
+            },
+            target: {
+              type: 'object',
+              properties: {
+                objectPath: { type: 'string', minLength: 1 },
+                materialPath: { type: 'string', minLength: 1 }
+              },
+              required: ['objectPath', 'materialPath'],
+              additionalProperties: false
+            }
+          },
+          required: ['operationContext', 'idempotencyKey', 'validationProfile', 'target']
+        }
+      },
+      {
+        name: 'capture_validation',
+        description: 'Queue deterministic validation capture for an existing validation session.',
+        category: 'Shader Validation',
+        inputSchema: {
+          ...jobContext,
+          properties: {
+            ...jobContext.properties,
+            validationSessionId: { type: 'string', minLength: 1 },
+            captures: {
+              type: 'array',
+              minItems: 1,
+              items: {
+                type: 'object',
+                properties: {
+                  captureName: { type: 'string', minLength: 1 },
+                  bindingMode: { type: 'string', enum: ['generated_material', 'preserve_original'] }
+                },
+                required: ['captureName', 'bindingMode'],
+                additionalProperties: false
+              }
+            }
+          },
+          required: ['operationContext', 'idempotencyKey', 'validationSessionId', 'captures']
+        }
+      },
       { name: 'create_shader_checkpoint', description: 'Queue an immutable Shader run checkpoint manifest.', category: 'Shader Validation', inputSchema: { ...jobContext, properties: { ...jobContext.properties, decision: { type: 'string', enum: ['pass', 'revise', 'blocked'] }, assetRevisions: { type: 'array' } }, required: ['decision', 'assetRevisions'] } },
       { name: 'restore_shader_checkpoint', description: 'Request structured restoration of a generated-assets checkpoint.', category: 'Shader Assets', inputSchema: { ...jobContext, properties: { ...jobContext.properties, checkpointId: { type: 'string' } }, required: ['checkpointId'] } },
       { name: 'get_console_diagnostics', description: 'Read Unity Console errors and warnings for generated Shader assets, including authoritative shader compiler findings for every platform. Use this after every constrained-execution write in Step 7.', category: 'Shader Validation', inputSchema: { type: 'object', properties: { assetPaths: { type: 'array', items: { type: 'string' }, description: 'Optional project-relative asset paths to scope diagnostics to; omit to scan the whole buffered console.' }, includeWarnings: { type: 'boolean', description: 'Include Warning-severity entries. Defaults to false so only errors block validation.' }, since: { type: 'string', description: 'ISO-8601 cursor (typically the write/job timestamp). Console entries at or before this instant are ignored so stale errors cannot pin a fixed Shader as failed.' }, operationContext: { type: 'object' } }, additionalProperties: true } },
