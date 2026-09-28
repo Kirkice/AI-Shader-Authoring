@@ -105,6 +105,14 @@ npm run build
 
 ## 安全说明
 
+- Node 服务现在必须配置 `UNITY_MCP_PAIRING_TOKEN`（至少建议使用 32 字节随机值），Unity Editor 使用同一环境变量或 `UnityMcp.PairingToken` EditorPrefs。连接通过 challenge/HMAC 完成配对，凭据本身不会通过 WebSocket 发送。
+- WebSocket 默认只允许 loopback 监听。非 loopback 监听还需显式设置 `UNITY_MCP_ALLOW_REMOTE=1`，并应置于 TLS 隧道或其他受保护传输之后。
+- 每次连接都有独立 `connectionEpoch`；副作用请求还携带一次性 nonce。Unity 会拒绝旧连接消息和重复 nonce，断线请求不会自动重放。
+- 每个 Unity socket 限制为每秒 100 条入站消息；超过预算会关闭连接。
+- `execute_editor_command` 默认不会出现在工具列表，Node 与 Unity 两端都会拒绝。仅本地人工诊断时可同时设置 Node 的 `UNITY_MCP_ENABLE_DYNAMIC_CSHARP=1` 和 Unity EditorPrefs `UnityMcp.EnableDynamicCSharp=true`。
+- 生成资产写入必须先调用 `propose_authorization_grant`，再由本地 Unity 菜单 **AI Shader Authoring/Authorization/Approve Pending Grants** 批准。写入严格受 grant 的 run、plan、文件、revision、有效期与写入预算约束。
+- 配对凭据可通过 **AI Shader Authoring/Security/Rotate Pairing Token** 轮换；轮换会立即断开旧连接并把新凭据复制到剪贴板。动态 C# 诊断模式还会逐条显示命令摘要并要求本地人工批准。
+
 结构化工具不接受 C# 源码，并强制项目相对路径及允许写入根：`Assets/AIShader/Generated/`、`Artifacts/ShaderKnowledgeBase/`、`Artifacts/ShaderRuns/`。生成资产写入还必须满足 `baseRevision`、`operationContext.runId`、`codePlan.codePlanId` 与 `codePlan.allowedFiles` 校验。
 
 `execute_editor_command` 是完全信任模式：它会编译并执行 MCP 客户端提供的 C# 源码。仅允许可信的本地 MCP 客户端连接此服务，且它只能用于人工批准的诊断、原型和维护，不可替代正式结构化 Shader 流程。

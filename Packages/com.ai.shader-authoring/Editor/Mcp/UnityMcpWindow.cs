@@ -21,7 +21,6 @@ namespace UnityMcp.Editor
         private static readonly ToolInfo[] Tools =
         {
             Tool("get_editor_state", "读取 Editor 状态", "读取当前场景、层级、选中对象、播放状态与项目结构。", "format: Raw | scripts only | no scripts"),
-            Tool("execute_editor_command", "执行 C# Editor 命令", "在 Unity Editor 上下文中编译并执行已授权的 C# 命令。", "code: string", true),
             Tool("get_logs", "读取 Console 日志", "筛选 Unity Console 的日志、警告、错误与异常。", "types, count, fields, messageContains, stackTraceContains, timestampAfter, timestampBefore"),
             Tool("run_unity_job", "启动结构化 Unity Job", "启动 allow-list 中的异步 Unity 作业，不接受 C# 源码。", "operationContext, idempotencyKey, jobType, args", true),
             Tool("get_unity_job", "读取 Unity Job 状态", "读取异步 Job 的状态和工件。", "jobId"),
@@ -31,6 +30,7 @@ namespace UnityMcp.Editor
             Tool("query_shader_knowledge_base", "查询 Shader 知识库", "检索已持久化的 Shader 示例、函数卡片和能力证据。", "knowledgeBaseVersion, query"),
             Tool("get_asset_revision", "读取资产 Revision", "读取项目相对资产的内容 revision。", "assetPaths"),
             Tool("inspect_shader_structure", "检查 Shader 结构", "读取 Shader Properties、Pass、入口、Include 与渲染状态。", "assetPath, expectedRevision"),
+            Tool("propose_authorization_grant", "提议写入授权", "提交有时限、文件范围、revision 与写入预算的授权提议；仍需在本地 Unity 面板批准。", "operationContext, scope", true),
             Tool("write_generated_text_asset", "写入生成文本资产", "仅在 Assets/AIShader/Generated 下写入 revision-protected 文本资产。", "operationContext, idempotencyKey, asset, codePlan", true),
             Tool("refresh_and_compile_assets", "刷新并编译资产", "排队刷新指定资产并返回编译证据。", "operationContext, idempotencyKey, assetPaths", true),
             Tool("export_compiled_gles_variants", "导出 GLES 编译变体", "从 Unity 编译器导出真实 GLES3x 顶点与片元 GLSL 变体。", "shaderPath, operationContext, idempotencyKey"),
@@ -93,6 +93,44 @@ namespace UnityMcp.Editor
             var window = GetWindow<UnityMcpWindow>("Unity MCP");
             window.minSize = new Vector2(560f, 480f);
             window.Show();
+        }
+
+        [MenuItem("AI Shader Authoring/Authorization/Approve Pending Grants")]
+        private static void ApprovePendingGrants()
+        {
+            var pending = UnityMcpAuthorizationRegistry.Snapshot();
+            var proposed = System.Array.FindAll(pending, grant => grant.status == "proposed");
+            if (proposed.Length == 0)
+            {
+                EditorUtility.DisplayDialog("Unity MCP 授权", "没有待批准的授权提议。", "确定");
+                return;
+            }
+            var summary = string.Join("\n", System.Array.ConvertAll(proposed, grant => grant.grantId + " · " + grant.runId + " · " + string.Join(", ", grant.allowedFiles)));
+            if (!EditorUtility.DisplayDialog("批准 Unity MCP 写入授权", "以下授权将获得限定范围的生成资产写入权限：\n\n" + summary, "批准", "取消")) return;
+            foreach (var grant in proposed) UnityMcpAuthorizationRegistry.Approve(grant.grantId);
+        }
+
+        [MenuItem("AI Shader Authoring/Authorization/Revoke Active Grants")]
+        private static void RevokeActiveGrants()
+        {
+            var active = System.Array.FindAll(UnityMcpAuthorizationRegistry.Snapshot(), grant => grant.status == "approved");
+            if (active.Length == 0) return;
+            if (!EditorUtility.DisplayDialog("撤销 Unity MCP 授权", "确认撤销全部已批准、尚未消耗完的写入授权？", "撤销", "取消")) return;
+            foreach (var grant in active) UnityMcpAuthorizationRegistry.Revoke(grant.grantId);
+        }
+
+        [MenuItem("AI Shader Authoring/Diagnostics/Enable Dynamic C#")]
+        private static void EnableDynamicCSharp() => UnityMcpConnection.SetDynamicCSharpDiagnosticMode(true);
+
+        [MenuItem("AI Shader Authoring/Diagnostics/Disable Dynamic C#")]
+        private static void DisableDynamicCSharp() => UnityMcpConnection.SetDynamicCSharpDiagnosticMode(false);
+
+        [MenuItem("AI Shader Authoring/Security/Rotate Pairing Token")]
+        private static void RotatePairingToken()
+        {
+            var token = UnityMcpConnection.RotatePairingToken();
+            EditorGUIUtility.systemCopyBuffer = token;
+            EditorUtility.DisplayDialog("配对凭据已轮换", "新凭据已复制到剪贴板。请同步更新 Node 的 UNITY_MCP_PAIRING_TOKEN；旧连接已立即断开。凭据不会写入日志。", "确定");
         }
 
         private void OnEnable()

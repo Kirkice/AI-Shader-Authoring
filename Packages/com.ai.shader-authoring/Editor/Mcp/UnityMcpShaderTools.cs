@@ -34,6 +34,7 @@ namespace UnityMcp.Editor
         private const string FixedValidationRendererName = "Sphere";
         private static readonly Dictionary<string, JobRecord> Jobs = new Dictionary<string, JobRecord>();
         private static readonly Dictionary<string, ValidationSessionRecord> ValidationSessions = new Dictionary<string, ValidationSessionRecord>();
+        private static readonly Dictionary<string, IdempotentWriteRecord> CompletedWrites = new Dictionary<string, IdempotentWriteRecord>();
         private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, IncludeFields = true, WriteIndented = true };
 
         internal static object Handle(string toolName, JsonElement args)
@@ -44,6 +45,7 @@ namespace UnityMcp.Editor
                 case "query_shader_knowledge_base": return QueryKnowledgeBase(args);
                 case "get_asset_revision": return GetAssetRevision(args);
                 case "inspect_shader_structure": return InspectShaderStructure(args);
+                case "propose_authorization_grant": return UnityMcpAuthorizationRegistry.Propose(args);
                 case "write_generated_text_asset": return WriteGeneratedTextAsset(args);
                 case "run_unity_job": return RunJob(args);
                 case "get_unity_job": return GetJob(args);
@@ -226,25 +228,53 @@ namespace UnityMcp.Editor
 
         private static object WriteGeneratedTextAsset(JsonElement args)
         {
+            var idempotencyKey = RequireString(args, "idempotencyKey");
             var asset = RequireProperty(args, "asset");
             var path = RequireString(asset, "path");
             var content = RequireString(asset, "contentUtf8");
+            var requestHash = Hash(args.GetRawText());
+            if (CompletedWrites.TryGetValue(idempotencyKey, out var completed))
+            {
+                if (completed.requestHash != requestHash) throw new InvalidOperationException("idempotency_conflict: key was already used with different input.");
+                return completed.result;
+            }
             var baseRevision = GetString(asset, "baseRevision") ?? "absent";
             RequireGeneratedPath(path);
-            RequireAuthorizedPlanForWrite(args, path);
             var exists = File.Exists(path);
             var current = exists ? Revision(path) : "absent";
             if (!string.Equals(current, baseRevision, StringComparison.Ordinal)) throw new InvalidOperationException("revision_conflict: expected " + baseRevision + ", observed " + current);
+            RequireAuthorizedPlanForWrite(args, path, current);
             var policy = GetString(asset, "createPolicy") ?? "create_or_update";
             if (policy == "create_only" && exists) throw new InvalidOperationException("revision_conflict: asset already exists");
             if (policy == "update_only" && !exists) throw new InvalidOperationException("invalid_argument: asset does not exist");
-            Directory.CreateDirectory(Path.GetDirectoryName(path) ?? GeneratedRoot);
+            var directory = Path.GetDirectoryName(path) ?? GeneratedRoot;
+            Directory.CreateDirectory(directory);
             var before = exists ? File.ReadAllText(path) : string.Empty;
-            File.WriteAllText(path, content, new UTF8Encoding(false));
+            var transactionId = Guid.NewGuid().ToString("N");
+            var transactionRoot = "Library/UnityMcp/transactions/" + transactionId + "/";
+            Directory.CreateDirectory(transactionRoot);
+            var temporaryPath = transactionRoot + Path.GetFileName(path) + ".tmp";
+            var backupPath = path + ".unitymcp.bak";
+            var transactionPath = transactionRoot + "transaction.json";
+            File.WriteAllText(transactionPath, JsonSerializer.Serialize(new { transactionId, status = "prepared", path, baseRevision, requestHash, createdAtUtc = DateTime.UtcNow.ToString("o") }, JsonOptions));
+            File.WriteAllText(temporaryPath, content, new UTF8Encoding(false));
+            try
+            {
+                if (exists) File.Replace(temporaryPath, path, backupPath);
+                else File.Move(temporaryPath, path);
+            }
+            catch
+            {
+                if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+                throw;
+            }
             AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
             var newRevision = Revision(path);
             var diffPath = WriteRunArtifact(args, "diffs/" + SafeName(path) + "-" + newRevision + ".diff", "--- before\n" + before + "\n+++ after\n" + content);
-            return new { asset = new { path, previousRevision = current, newRevision, contentHash = newRevision }, changedRanges = new[] { new { startLine = 1, endLine = content.Split('\n').Length } }, importRequired = true, artifactDiff = new { path = diffPath, contentHash = Hash(File.ReadAllText(diffPath)) } };
+            var result = new { asset = new { path, previousRevision = current, newRevision, contentHash = newRevision }, changedRanges = new[] { new { startLine = 1, endLine = content.Split('\n').Length } }, importRequired = true, transactionId, artifactDiff = new { path = diffPath, contentHash = Hash(File.ReadAllText(diffPath)) } };
+            File.WriteAllText(transactionPath, JsonSerializer.Serialize(new { transactionId, status = "committed", path, baseRevision, newRevision, requestHash, completedAtUtc = DateTime.UtcNow.ToString("o") }, JsonOptions));
+            CompletedWrites[idempotencyKey] = new IdempotentWriteRecord { requestHash = requestHash, result = result };
+            return result;
         }
 
         private static object RunJob(JsonElement args)
@@ -577,11 +607,45 @@ namespace UnityMcp.Editor
 
         private static object CreateJob(string type, JsonElement jobArgs, JsonElement context)
         {
+            AuthorizeJob(type, jobArgs, context);
             var id = Guid.NewGuid().ToString("N");
             var record = new JobRecord { jobId = id, jobType = type, status = "queued", createdAtUtc = DateTime.UtcNow.ToString("o"), argsJson = jobArgs.ValueKind == JsonValueKind.Undefined ? "{}" : jobArgs.GetRawText(), contextJson = context.ValueKind == JsonValueKind.Undefined ? "{}" : context.GetRawText(), cancellation = new CancellationTokenSource() };
             Jobs[id] = record;
             ExecuteJob(record);
             return new { jobId = id, status = record.status, acceptedJobType = type, acceptedAtUtc = record.createdAtUtc, completedAtUtc = record.completedAtUtc, logCursor = record.createdAtUtc };
+        }
+
+        private static void AuthorizeJob(string type, JsonElement jobArgs, JsonElement context)
+        {
+            string capability;
+            var paths = new List<string>();
+            switch (type)
+            {
+                case "build_shader_knowledge_base": capability = UnityMcpAuthorizationRegistry.BuildKnowledgeCapability; break;
+                case "refresh_and_compile_assets":
+                    capability = UnityMcpAuthorizationRegistry.CompileCapability;
+                    paths.AddRange(GetStringArray(jobArgs, "assetPaths"));
+                    break;
+                case "export_compiled_gles_variants":
+                case "analyze_shader_performance":
+                    capability = UnityMcpAuthorizationRegistry.CompileCapability;
+                    var shaderPath = GetString(jobArgs, "shaderPath");
+                    if (!string.IsNullOrEmpty(shaderPath)) paths.Add(shaderPath);
+                    break;
+                case "ensure_validation_scene":
+                    capability = UnityMcpAuthorizationRegistry.ConfigureValidationCapability;
+                    if (jobArgs.TryGetProperty("target", out var target))
+                    {
+                        paths.Add(GetString(target, "shaderPath"));
+                        paths.Add(GetString(target, "materialAssetPath"));
+                    }
+                    paths.Add(FixedValidationScenePath);
+                    break;
+                case "capture_validation": capability = UnityMcpAuthorizationRegistry.CaptureCapability; break;
+                case "create_shader_checkpoint": capability = UnityMcpAuthorizationRegistry.CheckpointCapability; break;
+                default: throw new UnauthorizedAccessException("No authorization capability is mapped for job type " + type);
+            }
+            UnityMcpAuthorizationRegistry.AuthorizeJobAndConsume(context, type, capability, paths.Where(path => !string.IsNullOrEmpty(path)));
         }
 
         private static Task ExecuteJob(JobRecord record)
@@ -1570,26 +1634,41 @@ namespace UnityMcp.Editor
 
         private static object[] FindLines(string[] lines, string token, string kind) => lines.Select((line, index) => new { line, index }).Where(item => item.line.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0).Select(item => (object)new { kind, sourceLocation = new { startLine = item.index + 1, endLine = item.index + 1 }, text = item.line.Trim() }).ToArray();
         private static string ParseShaderName(string source) { var marker = "Shader \""; var index = source.IndexOf(marker, StringComparison.Ordinal); if (index < 0) return null; index += marker.Length; var end = source.IndexOf('"', index); return end < 0 ? null : source.Substring(index, end - index); }
-        private static string WriteRunArtifact(JsonElement args, string relative, string content) { var runId = TryGetRunId(args) ?? "unscoped"; var path = RunsRoot + runId + "/" + relative; Directory.CreateDirectory(Path.GetDirectoryName(path) ?? RunsRoot); File.WriteAllText(path, content, new UTF8Encoding(false)); return path; }
+        private static string WriteRunArtifact(JsonElement args, string relative, string content) { var runId = SafePathSegment(TryGetRunId(args) ?? "unscoped"); var path = RunsRoot + runId + "/" + relative; Directory.CreateDirectory(Path.GetDirectoryName(path) ?? RunsRoot); File.WriteAllText(path, content, new UTF8Encoding(false)); return path; }
         private static string TryGetRunId(JsonElement args) { if (args.TryGetProperty("operationContext", out var context)) return GetString(context, "runId"); return GetString(args, "runId"); }
         private static string Revision(string path) => Hash(File.ReadAllText(path));
         private static string Hash(string text) => Hash(Encoding.UTF8.GetBytes(text));
         private static string Hash(byte[] bytes) { using (var sha = SHA256.Create()) { return BitConverter.ToString(sha.ComputeHash(bytes)).Replace("-", "").ToLowerInvariant(); } }
         private static string SafeName(string path) => path.Replace('/', '_').Replace('\\', '_').Replace(':', '_');
+        private static string SafePathSegment(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value) || value == "." || value == ".." || value.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || value.Contains("/") || value.Contains("\\"))
+                throw new UnauthorizedAccessException("Identifier is not safe for use as an artifact path segment.");
+            return value;
+        }
         private static bool IsGeneratedPath(string path) => path.Replace('\\', '/').StartsWith(GeneratedRoot, StringComparison.Ordinal);
         private static bool IsArtifactPath(string path) { var normalized = path.Replace('\\', '/'); return normalized.StartsWith(KnowledgeRoot, StringComparison.Ordinal) || normalized.StartsWith(RunsRoot, StringComparison.Ordinal); }
         private static void RequireGeneratedPath(string path) { ValidatePath(path); if (!IsGeneratedPath(path)) throw new UnauthorizedAccessException("Structured writes are limited to " + GeneratedRoot); }
-        private static void RequireAuthorizedPlanForWrite(JsonElement args, string path)
+        private static void RequireAuthorizedPlanForWrite(JsonElement args, string path, string currentRevision)
         {
             var codePlan = RequireProperty(args, "codePlan");
-            if (string.IsNullOrEmpty(GetString(codePlan, "codePlanId"))) throw new UnauthorizedAccessException("A codePlanId is required for generated asset writes.");
-            var allowedFiles = GetStringArray(codePlan, "allowedFiles");
-            if (!allowedFiles.Any(allowed => string.Equals(allowed.Replace('\\', '/'), path.Replace('\\', '/'), StringComparison.Ordinal))) throw new UnauthorizedAccessException("The asset path is not listed in codePlan.allowedFiles.");
+            var requestedPlanId = GetString(codePlan, "codePlanId");
+            if (string.IsNullOrEmpty(requestedPlanId)) throw new UnauthorizedAccessException("A codePlanId is required for generated asset writes.");
             var context = RequireProperty(args, "operationContext");
             if (string.IsNullOrEmpty(GetString(context, "runId"))) throw new UnauthorizedAccessException("operationContext.runId is required for generated asset writes.");
+            if (!string.Equals(requestedPlanId, GetString(context, "codePlanId"), StringComparison.Ordinal)) throw new UnauthorizedAccessException("codePlanId does not match operationContext.");
+            UnityMcpAuthorizationRegistry.AuthorizeAndConsume(args, path, currentRevision);
         }
         private static void RequireReadPath(string path) { ValidatePath(path); if (!(path.StartsWith("Assets/", StringComparison.Ordinal) || path.StartsWith("Packages/", StringComparison.Ordinal) || path.StartsWith("ProjectSettings/", StringComparison.Ordinal) || path.StartsWith("Artifacts/", StringComparison.Ordinal))) throw new UnauthorizedAccessException("Path is outside project read roots."); }
-        private static void ValidatePath(string path) { if (string.IsNullOrWhiteSpace(path) || Path.IsPathRooted(path) || path.Replace('\\', '/').Contains("../")) throw new UnauthorizedAccessException("Path must be project-relative and may not escape the project."); }
+        private static void ValidatePath(string path)
+        {
+            var normalized = (path ?? string.Empty).Replace('\\', '/');
+            if (string.IsNullOrWhiteSpace(normalized) || Path.IsPathRooted(normalized) || normalized.Split('/').Any(part => part == ".." || part == "."))
+                throw new UnauthorizedAccessException("Path must be project-relative and may not escape the project.");
+            var extension = Path.GetExtension(normalized);
+            if (IsGeneratedPath(normalized) && !new[] { ".shader", ".hlsl", ".cginc", ".mat", ".json", ".txt" }.Contains(extension, StringComparer.OrdinalIgnoreCase))
+                throw new UnauthorizedAccessException("Generated asset extension is not allow-listed.");
+        }
         private static JsonElement RequireProperty(JsonElement element, string name) { if (!element.TryGetProperty(name, out var value)) throw new ArgumentException("Missing required property: " + name); return value; }
         private static string RequireString(JsonElement element, string name) => GetString(element, name) ?? throw new ArgumentException("Missing required string: " + name);
         private static string GetString(JsonElement element, string name) => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
@@ -1614,6 +1693,7 @@ namespace UnityMcp.Editor
         }
 
         [Serializable] private sealed class JobRecord { public string jobId; public string jobType; public string status; public string createdAtUtc; public string completedAtUtc; public string argsJson; public string contextJson; public string resultJson; public string error; [NonSerialized] public CancellationTokenSource cancellation; public readonly List<string> artifacts = new List<string>(); }
+        private sealed class IdempotentWriteRecord { public string requestHash; public object result; }
 
         private sealed class KnowledgePartition
         {

@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Text.Json;
 using System.IO;
+using System.Security.Cryptography;
 using Microsoft.CSharp;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -37,10 +38,15 @@ namespace UnityMcp.Editor
         private const int DefaultServerPort = 8080;
         private const string ServerHostPreferenceKey = "UnityMcp.ServerHost";
         private const string ServerPortPreferenceKey = "UnityMcp.ServerPort";
+        private const string PairingTokenPreferenceKey = "UnityMcp.PairingToken";
+        private const string DynamicCSharpPreferenceKey = "UnityMcp.EnableDynamicCSharp";
+        private const int MaxInboundMessageBytes = 2 * 1024 * 1024;
         private const int MaxLogEntries = 1000;
         private const int MaxForwardedLogsPerSecond = 20;
         private static readonly ConcurrentQueue<string> PendingMessages = new ConcurrentQueue<string>();
         private static readonly Queue<LogEntry> RecentLogs = new Queue<LogEntry>();
+        private static readonly HashSet<string> ReceivedMessageNonces = new HashSet<string>(StringComparer.Ordinal);
+        private static readonly Queue<string> ReceivedMessageNonceOrder = new Queue<string>();
         private static readonly SemaphoreSlim SendSemaphore = new SemaphoreSlim(1, 1);
 
         private static ClientWebSocket webSocket;
@@ -53,6 +59,7 @@ namespace UnityMcp.Editor
         private static bool isConnected;
         private static bool isRegistered;
         private static string serverInstanceId = string.Empty;
+        private static string connectionEpoch = string.Empty;
         private static DateTime lastRegistrationAcknowledgementUtc;
         private static string lastErrorMessage = string.Empty;
         private static bool serviceEnabled = true;
@@ -67,6 +74,13 @@ namespace UnityMcp.Editor
         public static string CurrentProjectPath => ProjectPath;
         public static string ServerHost => EditorPrefs.GetString(ServerHostPreferenceKey, DefaultServerHost);
         public static int ServerPort => EditorPrefs.GetInt(ServerPortPreferenceKey, DefaultServerPort);
+        public static string PairingToken => EditorPrefs.GetString(PairingTokenPreferenceKey, Environment.GetEnvironmentVariable("UNITY_MCP_PAIRING_TOKEN") ?? string.Empty);
+        public static bool DynamicCSharpEnabled => EditorPrefs.GetBool(DynamicCSharpPreferenceKey, false);
+        public static void SetDynamicCSharpDiagnosticMode(bool enabled)
+        {
+            if (enabled && !EditorUtility.DisplayDialog("危险诊断模式", "动态 C# 与 Unity Editor 具有相同权限。仅在本机、已审阅命令内容时启用。是否继续？", "启用", "取消")) return;
+            EditorPrefs.SetBool(DynamicCSharpPreferenceKey, enabled);
+        }
         public static bool IsServiceEnabled => serviceEnabled;
         public static ServiceState State => !serviceEnabled
             ? ServiceState.Closed
@@ -140,11 +154,38 @@ namespace UnityMcp.Editor
             return true;
         }
 
+        public static bool TryConfigurePairingToken(string token, out string errorMessage)
+        {
+            token = (token ?? string.Empty).Trim();
+            if (token.Length < 16)
+            {
+                errorMessage = "配对凭据至少需要 16 个字符。";
+                return false;
+            }
+            EditorPrefs.SetString(PairingTokenPreferenceKey, token);
+            errorMessage = string.Empty;
+            Disconnect();
+            if (serviceEnabled) StartService();
+            return true;
+        }
+
+        public static string RotatePairingToken()
+        {
+            var bytes = new byte[32];
+            using (var random = RandomNumberGenerator.Create()) random.GetBytes(bytes);
+            var token = Convert.ToBase64String(bytes);
+            EditorPrefs.SetString(PairingTokenPreferenceKey, token);
+            Disconnect();
+            if (serviceEnabled) StartService();
+            return token;
+        }
+
         public static void Disconnect()
         {
             isConnected = false;
             isRegistered = false;
             serverInstanceId = string.Empty;
+            connectionEpoch = string.Empty;
             connecting = false;
             try { cancellation?.Cancel(); } catch { }
             try { webSocket?.Abort(); webSocket?.Dispose(); } catch { }
@@ -163,6 +204,8 @@ namespace UnityMcp.Editor
                 case "get_logs":
                     return JsonSerializer.Serialize(RecentLogs.ToArray(), new JsonSerializerOptions { WriteIndented = true });
                 case "execute_editor_command":
+                    if (!DynamicCSharpEnabled)
+                        throw new UnauthorizedAccessException("动态 C# 默认关闭，仅允许本地人工诊断模式显式启用。");
                     if (string.IsNullOrWhiteSpace(commandCode))
                         throw new ArgumentException("请输入要执行的 C# 命令。", nameof(commandCode));
                     return JsonSerializer.Serialize(new { result = CSEditorHelper.ExecuteCommand(commandCode) }, new JsonSerializerOptions { WriteIndented = true });
@@ -179,7 +222,7 @@ namespace UnityMcp.Editor
             if (serviceEnabled && !IsConnected && !connecting && DateTime.UtcNow >= nextConnectAttemptUtc)
                 ConnectToServer();
 
-            if (IsConnected && DateTime.UtcNow >= nextStateSendUtc)
+            if (IsRegistered && DateTime.UtcNow >= nextStateSendUtc)
             {
                 // 完整层级和 AssetDatabase.FindAssets 扫描只能由 get_editor_state 按需触发。
                 // 心跳仅用于让 MCP Server 确认 Editor 仍存活，避免每秒卡住主线程扫描整个工程。
@@ -210,15 +253,6 @@ namespace UnityMcp.Editor
                 serverInstanceId = string.Empty;
                 lastErrorMessage = string.Empty;
                 nextStateSendUtc = DateTime.MinValue;
-                Send("hello", new
-                {
-                    protocolVersion = 2,
-                    editorInstanceId = EditorInstanceId,
-                    projectPath = ProjectPath,
-                    projectName = Path.GetFileName(ProjectPath),
-                    unityVersion = Application.unityVersion,
-                    processId = System.Diagnostics.Process.GetCurrentProcess().Id
-                });
                 _ = ReceiveLoop(webSocket, cancellation.Token);
                 Debug.Log("[Unity MCP] Connected to WebSocket server as " + EditorInstanceId + " for " + ProjectPath + ".");
             }
@@ -238,6 +272,7 @@ namespace UnityMcp.Editor
         {
             isRegistered = false;
             serverInstanceId = string.Empty;
+            connectionEpoch = string.Empty;
             try { cancellation?.Cancel(); } catch { }
             try { webSocket?.Abort(); webSocket?.Dispose(); } catch { }
             cancellation?.Dispose();
@@ -266,6 +301,8 @@ namespace UnityMcp.Editor
                             return;
                         }
                         builder.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
+                        if (builder.Length > MaxInboundMessageBytes)
+                            throw new InvalidDataException("MCP WebSocket message exceeds the 2 MiB limit.");
                     } while (!result.EndOfMessage);
                     PendingMessages.Enqueue(builder.ToString());
                 }
@@ -312,7 +349,7 @@ namespace UnityMcp.Editor
                 logForwardWindowUtc = now;
                 forwardedLogsInWindow = 0;
             }
-            if (forwardedLogsInWindow++ < MaxForwardedLogsPerSecond) Send("log", entry);
+            if (IsRegistered && forwardedLogsInWindow++ < MaxForwardedLogsPerSecond) Send("log", entry);
         }
 
         private static void SendEditorHeartbeat() => Send("editorState", new
@@ -358,14 +395,20 @@ namespace UnityMcp.Editor
                     if (!root.TryGetProperty("type", out var typeElement)) return;
                     switch (typeElement.GetString())
                     {
+                    case "pairingChallenge":
+                        RespondToPairingChallenge(root.TryGetProperty("data", out var challengeData) ? challengeData.GetRawText() : "{}");
+                        break;
                     case "editorRegistered":
                         ConfirmEditorRegistration(root.TryGetProperty("data", out var registrationData) ? registrationData.GetRawText() : "{}");
                         break;
                     case "executeEditorCommand":
-                        ExecuteEditorCommand(root.TryGetProperty("data", out var commandData) ? commandData.GetRawText() : "{}");
+                        if (!DynamicCSharpEnabled) throw new UnauthorizedAccessException("executeEditorCommand is disabled by default.");
+                        RequireRegisteredMessage(root, out var commandData);
+                        ExecuteEditorCommand(commandData.GetRawText());
                         break;
                     case "executeStructuredTool":
-                        ExecuteStructuredTool(root.TryGetProperty("data", out var structuredToolData) ? structuredToolData.GetRawText() : "{}");
+                        RequireRegisteredMessage(root, out var structuredToolData);
+                        ExecuteStructuredTool(structuredToolData.GetRawText());
                         break;
                     case "selectGameObject":
                         SelectGameObject(root.TryGetProperty("data", out var selectionData)
@@ -384,12 +427,58 @@ namespace UnityMcp.Editor
             }
         }
 
+        private static void RespondToPairingChallenge(string challengeData)
+        {
+            var challenge = JsonSerializer.Deserialize<PairingChallenge>(challengeData ?? "{}");
+            var token = PairingToken;
+            if (challenge == null || string.IsNullOrEmpty(challenge.challenge) || string.IsNullOrEmpty(challenge.connectionEpoch) || string.IsNullOrEmpty(token))
+                throw new UnauthorizedAccessException("MCP 配对凭据或 challenge 缺失。");
+            connectionEpoch = challenge.connectionEpoch;
+            serverInstanceId = challenge.serverInstanceId ?? string.Empty;
+            var proofPayload = challenge.challenge + ":" + connectionEpoch + ":" + EditorInstanceId + ":" + ProjectPath;
+            Send("hello", new
+            {
+                protocolVersion = 3,
+                editorInstanceId = EditorInstanceId,
+                projectPath = ProjectPath,
+                projectName = Path.GetFileName(ProjectPath),
+                unityVersion = Application.unityVersion,
+                processId = System.Diagnostics.Process.GetCurrentProcess().Id,
+                connectionEpoch,
+                pairingProof = HmacSha256(token, proofPayload)
+            });
+        }
+
+        private static void RequireRegisteredMessage(JsonElement root, out JsonElement data)
+        {
+            if (!IsRegistered || !root.TryGetProperty("data", out data))
+                throw new UnauthorizedAccessException("MCP message arrived before authenticated registration.");
+            var epoch = data.TryGetProperty("connectionEpoch", out var epochElement) ? epochElement.GetString() : null;
+            if (!string.Equals(epoch, connectionEpoch, StringComparison.Ordinal))
+                throw new UnauthorizedAccessException("MCP message belongs to an obsolete connection epoch.");
+            var nonce = data.TryGetProperty("messageNonce", out var nonceElement) ? nonceElement.GetString() : null;
+            if (string.IsNullOrEmpty(nonce)) throw new UnauthorizedAccessException("MCP message nonce is required.");
+            lock (ReceivedMessageNonces)
+            {
+                if (!ReceivedMessageNonces.Add(nonce)) throw new UnauthorizedAccessException("Replayed MCP message was rejected.");
+                ReceivedMessageNonceOrder.Enqueue(nonce);
+                while (ReceivedMessageNonceOrder.Count > 2048) ReceivedMessageNonces.Remove(ReceivedMessageNonceOrder.Dequeue());
+            }
+        }
+
+        private static string HmacSha256(string secret, string payload)
+        {
+            using (var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret)))
+                return BitConverter.ToString(hmac.ComputeHash(Encoding.UTF8.GetBytes(payload))).Replace("-", "").ToLowerInvariant();
+        }
+
         private static void ConfirmEditorRegistration(string registrationData)
         {
             var acknowledgement = JsonSerializer.Deserialize<EditorRegistrationAcknowledgement>(registrationData ?? "{}");
             if (acknowledgement == null
                 || !string.Equals(acknowledgement.editorInstanceId, EditorInstanceId, StringComparison.Ordinal)
-                || !string.Equals(NormalizePath(acknowledgement.projectPath), ProjectPath, StringComparison.OrdinalIgnoreCase))
+                || !string.Equals(NormalizePath(acknowledgement.projectPath), ProjectPath, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(acknowledgement.connectionEpoch, connectionEpoch, StringComparison.Ordinal))
             {
                 lastErrorMessage = "MCP 服务返回的 Editor 身份与当前 Unity 会话不匹配。";
                 isRegistered = false;
@@ -421,12 +510,17 @@ namespace UnityMcp.Editor
             {
                 command = JsonSerializer.Deserialize<EditorCommandData>(commandData ?? "{}");
                 if (string.IsNullOrWhiteSpace(command?.code)) throw new ArgumentException("The command payload does not contain C# code.");
+                var digest = HmacSha256("unity-mcp-command-review", command.code).Substring(0, 16);
+                var preview = command.code.Length > 400 ? command.code.Substring(0, 400) + "…" : command.code;
+                if (!EditorUtility.DisplayDialog("批准动态 C# 命令", "摘要 SHA-256/HMAC：" + digest + "\n\n" + preview, "仅执行本次", "拒绝"))
+                    throw new UnauthorizedAccessException("Dynamic C# command was denied by the local user.");
                 Debug.Log($"[Unity MCP] Executing command:\n{command.code}");
                 var result = CSEditorHelper.ExecuteCommand(command.code);
-                Send("commandResult", new
-                {
+                    Send("commandResult", new
+                    {
                     requestId = command.requestId,
-                    agentSessionId = command.agentSessionId,
+                        agentSessionId = command.agentSessionId,
+                        connectionEpoch,
                     result,
                     logs,
                     errors,
@@ -440,7 +534,7 @@ namespace UnityMcp.Editor
                 var error = $"[Unity MCP] Failed to execute editor command: {exception.Message}\n{exception.StackTrace}";
                 Debug.LogError(error);
                 errors.Add(error);
-                Send("commandResult", new { requestId = command?.requestId, agentSessionId = command?.agentSessionId, result = (object)null, logs, errors, warnings, executionSuccess = false, errorDetails = new { message = exception.Message, stackTrace = exception.StackTrace, type = exception.GetType().Name } });
+                Send("commandResult", new { requestId = command?.requestId, agentSessionId = command?.agentSessionId, connectionEpoch, result = (object)null, logs, errors, warnings, executionSuccess = false, errorDetails = new { message = exception.Message, stackTrace = exception.StackTrace, type = exception.GetType().Name } });
             }
             finally
             {
@@ -464,7 +558,7 @@ namespace UnityMcp.Editor
                     agentSessionId = root.TryGetProperty("agentSessionId", out var agentSessionIdElement) ? agentSessionIdElement.GetString() : null;
                     var args = root.TryGetProperty("args", out var argsElement) ? argsElement : default;
                     var result = UnityMcpShaderTools.Handle(toolName, args);
-                    Send("structuredToolResult", new { requestId, agentSessionId, toolName, result, executionSuccess = true });
+                    Send("structuredToolResult", new { requestId, agentSessionId, connectionEpoch, toolName, result, executionSuccess = true });
                 }
             }
             catch (Exception exception)
@@ -474,6 +568,7 @@ namespace UnityMcp.Editor
                 {
                     requestId,
                     agentSessionId,
+                    connectionEpoch,
                     executionSuccess = false,
                     errorDetails = new { message = exception.Message, stackTrace = exception.StackTrace, type = exception.GetType().Name }
                 });
@@ -553,7 +648,8 @@ namespace UnityMcp.Editor
 
         private static string NormalizePath(string path) => (path ?? string.Empty).Replace('\\', '/');
 
-        [Serializable] private sealed class EditorRegistrationAcknowledgement { public string serverInstanceId { get; set; } public string editorInstanceId { get; set; } public string projectPath { get; set; } }
+        [Serializable] private sealed class PairingChallenge { public string serverInstanceId { get; set; } public string connectionEpoch { get; set; } public string challenge { get; set; } }
+        [Serializable] private sealed class EditorRegistrationAcknowledgement { public string serverInstanceId { get; set; } public string editorInstanceId { get; set; } public string projectPath { get; set; } public string connectionEpoch { get; set; } }
         [Serializable] private sealed class EditorCommandData { public string code { get; set; } public string requestId { get; set; } public string agentSessionId { get; set; } }
         [Serializable] private sealed class SelectionData { public string objectPath { get; set; } }
         [Serializable] private sealed class LogEntry { public string message; public string stackTrace; public string logType; public string timestamp; }

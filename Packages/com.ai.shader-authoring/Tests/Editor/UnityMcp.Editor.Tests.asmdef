@@ -1,0 +1,8 @@
+{
+  "name": "UnityMcp.Editor.Tests",
+  "rootNamespace": "UnityMcp.Editor.Tests",
+  "references": ["UnityMcp.Editor"],
+  "includePlatforms": ["Editor"],
+  "optionalUnityReferences": ["TestAssemblies"],
+  "autoReferenced": false
+}
