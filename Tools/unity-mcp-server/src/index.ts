@@ -41,6 +41,8 @@ interface UnityEditorClient {
   identity: UnityEditorIdentity | null;
   editorState: UnityEditorState;
   logBuffer: LogEntry[];
+  connectedAtUtc: string;
+  lastHeartbeatUtc: string | null;
 }
 
 interface PendingUnityRequest {
@@ -49,16 +51,29 @@ interface PendingUnityRequest {
   editorInstanceId: string;
 }
 
+interface AuthorizationContext {
+  runId: string;
+  skill: string;
+  codePlanId: string;
+  authorizationGrantId: string;
+  source: 'mcp-generated';
+  createdAtUtc: string;
+}
+
 class UnityMCPServer {
   private server: Server;
   private wsServer: WebSocketServer;
   private readonly websocketHost = process.env.UNITY_MCP_WS_HOST || '127.0.0.1';
   private readonly websocketPort = this.readWebSocketPort(process.env.UNITY_MCP_WS_PORT);
   private readonly agentSessionId = process.env.UNITY_MCP_AGENT_SESSION_ID || randomUUID();
+  private readonly serverInstanceId = randomUUID();
+  private readonly startedAtUtc = new Date().toISOString();
   private targetEditorInstanceId = process.env.UNITY_MCP_TARGET_EDITOR_ID || '';
   private readonly targetProjectPath = this.normalizePath(process.env.UNITY_MCP_TARGET_PROJECT_PATH || '');
   private readonly editorClients = new Map<WebSocket, UnityEditorClient>();
   private readonly pendingUnityRequests = new Map<string, PendingUnityRequest>();
+  // 审计上下文由 MCP 自动生成并按 runId 缓存，用户无需填写内部标识。
+  private readonly authorizationContexts = new Map<string, AuthorizationContext>();
   private editorState: UnityEditorState = {
     activeGameObjects: [],
     selectedObjects: [],
@@ -115,7 +130,9 @@ class UnityMCPServer {
         socket: ws,
         identity: null,
         editorState: this.emptyEditorState(),
-        logBuffer: []
+        logBuffer: [],
+        connectedAtUtc: new Date().toISOString(),
+        lastHeartbeatUtc: null
       };
       this.editorClients.set(ws, client);
       console.error('[Unity MCP] Unity Editor socket connected; awaiting hello identity.');
@@ -170,6 +187,7 @@ class UnityMCPServer {
         }
 
         client.editorState = filteredData;
+        client.lastHeartbeatUtc = new Date().toISOString();
         if (this.isSelectedClient(client)) this.editorState = filteredData;
         break;
       
@@ -211,7 +229,55 @@ class UnityMCPServer {
       processId: Number(data.processId) || 0,
       protocolVersion: Number(data.protocolVersion) || 1
     };
-    console.error(`[Unity MCP] Registered Editor ${editorInstanceId} for ${projectPath}.`);
+    client.lastHeartbeatUtc = new Date().toISOString();
+    client.socket.send(JSON.stringify({
+      type: 'editorRegistered',
+      data: {
+        serverInstanceId: this.serverInstanceId,
+        editorInstanceId,
+        projectPath,
+        registeredAtUtc: client.lastHeartbeatUtc
+      }
+    }));
+    console.error(`[Unity MCP] Registered Editor ${editorInstanceId} for ${projectPath} on server ${this.serverInstanceId}.`);
+  }
+
+  private getConnectionDiagnostics(): object {
+    const now = Date.now();
+    const editors = Array.from(this.editorClients.values()).map(client => {
+      const lastHeartbeatAgeMs = client.lastHeartbeatUtc ? now - Date.parse(client.lastHeartbeatUtc) : null;
+      const socketOpen = client.socket.readyState === WebSocket.OPEN;
+      const matchesTarget = client.identity !== null
+        && socketOpen
+        && (!this.targetEditorInstanceId || client.identity.editorInstanceId === this.targetEditorInstanceId)
+        && (!this.targetProjectPath || client.identity.projectPath === this.targetProjectPath);
+      return {
+        socketOpen,
+        connectedAtUtc: client.connectedAtUtc,
+        lastHeartbeatUtc: client.lastHeartbeatUtc,
+        lastHeartbeatAgeMs,
+        identity: client.identity,
+        matchesTarget
+      };
+    });
+    return {
+      serverInstanceId: this.serverInstanceId,
+      processId: process.pid,
+      startedAtUtc: this.startedAtUtc,
+      websocket: { host: this.websocketHost, port: this.websocketPort },
+      agentBinding: {
+        agentSessionId: this.agentSessionId,
+        targetEditorInstanceId: this.targetEditorInstanceId || null,
+        targetProjectPath: this.targetProjectPath || null
+      },
+      registeredEditorCount: editors.filter(editor => editor.identity !== null && editor.socketOpen).length,
+      editors,
+      guidance: editors.length === 0
+        ? '当前 MCP Server 未收到任何 Unity WebSocket 连接。请确认 Unity Dashboard 的地址、端口与此 Server 一致。'
+        : editors.some(editor => editor.matchesTarget)
+          ? '当前 Agent 绑定存在可用 Editor。'
+          : 'Unity 已连接到此 Server，但没有 Editor 匹配当前 Agent 绑定；请检查项目路径或 Editor ID。'
+    };
   }
 
   private resolveTargetEditor(): UnityEditorClient {
@@ -266,6 +332,14 @@ class UnityMCPServer {
     // List available tools with comprehensive documentation
     this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: [
+        {
+          name: 'get_mcp_connection_diagnostics',
+          description: 'Retrieve the Unity MCP server instance, Agent binding, registered Editors, and heartbeat state without requiring a bound Unity Editor.',
+          category: 'Debugging',
+          tags: ['unity', 'mcp', 'connection', 'diagnostics'],
+          inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+          returns: { type: 'object', description: 'MCP server identity, active binding, registered Editors, and mismatch guidance.' }
+        },
         {
           name: 'get_editor_state',
           description: 'Retrieve the current state of the Unity Editor, including active GameObjects, selection state, play mode status, scene hierarchy, and project structure. This tool provides a comprehensive snapshot of the editor\'s current context.',
@@ -444,13 +518,18 @@ class UnityMCPServer {
 
     // Handle tool calls with enhanced validation and error handling
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
-      // Resolve this Agent's explicitly bound Unity Editor before executing any tool.
-      const targetEditor = this.resolveTargetEditor();
-
       const { name, arguments: args } = request.params;
 
+      // 连接诊断用于排查未注册或绑定失败，因此不能依赖已选中的 Unity Editor。
+      if (name === 'get_mcp_connection_diagnostics') {
+        return { content: [{ type: 'text', text: JSON.stringify(this.getConnectionDiagnostics(), null, 2) }] };
+      }
+
+      // Resolve this Agent's explicitly bound Unity Editor before executing all other tools.
+      const targetEditor = this.resolveTargetEditor();
+
       // Validate tool exists with helpful error message.
-      const availableTools = ['get_editor_state', 'execute_editor_command', 'get_logs', ...this.getStructuredToolNames()];
+      const availableTools = ['get_mcp_connection_diagnostics', 'get_editor_state', 'execute_editor_command', 'get_logs', ...this.getStructuredToolNames()];
       if (!availableTools.includes(name)) {
         throw new McpError(
           ErrorCode.MethodNotFound,
@@ -680,14 +759,14 @@ class UnityMCPServer {
       properties: {
         operationContext: {
           type: 'object',
-          description: 'Audit context containing the non-empty runId, skill, codePlanId, and optional authorizationGrantId.',
+          description: 'Optional audit context. Missing values are generated and injected by the MCP server for the current run.',
           properties: {
             runId: { type: 'string', minLength: 1 },
             skill: { type: 'string', minLength: 1 },
             codePlanId: { type: 'string', minLength: 1 },
             authorizationGrantId: { type: 'string', minLength: 1 }
           },
-          required: ['runId', 'skill', 'codePlanId'],
+          required: [],
           additionalProperties: false
         },
         idempotencyKey: { type: 'string', minLength: 1 }
@@ -719,7 +798,7 @@ class UnityMCPServer {
                 codePlanId: { type: 'string', minLength: 1 },
                 authorizationGrantId: { type: 'string', minLength: 1 }
               },
-              required: ['runId', 'skill', 'codePlanId'],
+              required: [],
               additionalProperties: false
             },
             idempotencyKey: { type: 'string', minLength: 1 },
@@ -754,7 +833,7 @@ class UnityMCPServer {
       { name: 'refresh_and_compile_assets', description: 'Queue refresh and import for specified assets, returning structured compile evidence.', category: 'Shader Validation', inputSchema: { ...jobContext, properties: { ...jobContext.properties, assetPaths: { type: 'array', items: { type: 'string' } } }, required: ['assetPaths'] } },
       {
         name: 'ensure_validation_scene',
-        description: 'Queue isolated deterministic validation-session setup. The scene, camera, target Renderer, and Material paths are required.',
+        description: 'Queue fixed-fixture validation-session setup. A persisted generated Material asset must already use target.shaderPath; that exact asset is bound transactionally and read back during capture.',
         category: 'Shader Validation',
         inputSchema: {
           ...jobContext,
@@ -777,9 +856,11 @@ class UnityMCPServer {
               type: 'object',
               properties: {
                 objectPath: { type: 'string', minLength: 1 },
-                materialPath: { type: 'string', minLength: 1 }
+                shaderPath: { type: 'string', minLength: 1 },
+                materialAssetPath: { type: 'string', minLength: 1 },
+                materialSlot: { type: 'integer', minimum: 0 }
               },
-              required: ['objectPath', 'materialPath'],
+              required: ['objectPath', 'shaderPath', 'materialAssetPath'],
               additionalProperties: false
             }
           },
@@ -820,6 +901,24 @@ class UnityMCPServer {
     ];
   }
 
+  private normalizeStructuredArguments(args: unknown): Record<string, any> {
+    const normalized = args && typeof args === 'object' && !Array.isArray(args) ? { ...(args as Record<string, any>) } : {};
+    const requested = normalized.operationContext && typeof normalized.operationContext === 'object' ? normalized.operationContext as Partial<AuthorizationContext> : {};
+    const runId = typeof requested.runId === 'string' && requested.runId.trim().length > 0 ? requested.runId.trim() : `run-${randomUUID()}`;
+    const existing = this.authorizationContexts.get(runId);
+    const context: AuthorizationContext = existing ?? {
+      runId,
+      skill: typeof requested.skill === 'string' && requested.skill.trim().length > 0 ? requested.skill.trim() : 'shader-authoring-agent',
+      codePlanId: typeof requested.codePlanId === 'string' && requested.codePlanId.trim().length > 0 ? requested.codePlanId.trim() : `code-plan-${randomUUID()}`,
+      authorizationGrantId: typeof requested.authorizationGrantId === 'string' && requested.authorizationGrantId.trim().length > 0 ? requested.authorizationGrantId.trim() : `grant-${randomUUID()}`,
+      source: 'mcp-generated',
+      createdAtUtc: new Date().toISOString()
+    };
+    this.authorizationContexts.set(runId, context);
+    normalized.operationContext = context;
+    return normalized;
+  }
+
   private async callStructuredTool(name: string, args: unknown) {
     const targetEditor = this.resolveTargetEditor();
     const requestId = randomUUID();
@@ -829,11 +928,11 @@ class UnityMCPServer {
     try {
       targetEditor.socket.send(JSON.stringify({
         type: 'executeStructuredTool',
-        data: { requestId, agentSessionId: this.agentSessionId, toolName: name, args }
+        data: { requestId, agentSessionId: this.agentSessionId, toolName: name, args: this.normalizeStructuredArguments(args) }
       }));
       const result = await Promise.race([
         resultPromise,
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Structured Unity tool did not acknowledge within 30 seconds.')), 30000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Structured Unity tool did not acknowledge within 120 seconds.')), 120000))
       ]);
       if (!result?.executionSuccess) {
         throw new McpError(ErrorCode.InternalError, result?.errorDetails?.message ?? 'Structured Unity tool failed.');

@@ -433,6 +433,7 @@ ValidationEvidence
   console: ConsoleEvidence
   validationSession: ValidationSessionEvidence | null
   captures: CaptureEvidence[]
+  performance: PerformanceEvidence | null
   debugChannels: DebugEvidence[]
   parameterScans: ParameterScanEvidence[]
   acceptanceChecks: AcceptanceCheck[]
@@ -460,8 +461,14 @@ ConsoleEvidence
 ValidationSessionEvidence
   sessionId: string
   manifest: ArtifactRef
+  fixedScenePath: "Packages/com.ai.shader-authoring/Tests/AI Shader Authoring.unity"
+  targetHierarchyPath: string
+  targetRendererName: "Sphere"
+  materialAssetPath: string
+  materialRevision: string
+  shaderPath: string
   shaderRevision: string
-  materialProperties: object
+  materialSlot: integer
   cameraPreset: string
   lightingPreset: string
   environmentPreset: string
@@ -471,7 +478,27 @@ CaptureEvidence
   channel: beauty | albedo | normal | metallic | roughness | emission | alpha | clip_mask
   image: ArtifactRef
   manifest: ArtifactRef
+  bindingMode: preserve_original | generated_material
+  materialBinding
+    expectedAssetPath: string
+    actualAssetPath: string
+    instanceId: integer
+    shaderName: string
+    materialRevision: string | null
+    shaderRevision: string | null
+    materialSlot: integer
   expectedSemanticNodes: string[]
+
+PerformanceEvidence
+  policy: low_android | medium_android | high_android | all_android | custom | collect_only
+  shaderRevision: string
+  compiledGlesVariants: ArtifactRef | null
+  maliCompilerStatus: configured | not_configured | failed
+  rating: 信息 | 注意 | 预警 | 高风险 | 未评级
+  violations: string[]
+  summary: ArtifactRef
+  runArchive: ArtifactRef
+  advisoryOnly: true
 
 DebugEvidence
   channel: string
@@ -498,9 +525,11 @@ AcceptanceCheck
 1. 静态检查、编译和 Console 三项都必须存在。
 2. 所有编译的 observed revision 必须与本计划产生的 revision 相同。
 3. Console 不得存在从本轮 `baselineCursor` 后产生的 Error 或 Exception。
-4. 每个本轮激活效果节点都必须有至少一个对应 Debug 通道或参数扫描证据。
-5. Alpha Clip 或透明激活时，必须含 `alpha` 与 `clip_mask` 证据及阈值或透明度扫描。
-6. 任何工件缺少 Manifest、revision 或 `runId` 时，整体为 `invalid`。
+4. 每个 `generated_material` 截图必须回读并记录真实材质资产路径、实例 ID、Shader、材质/Shader revision 与槽位；任一项与 `ValidationSessionEvidence` 不一致时，整体为 `invalid`。不得以复制夹具材质后临时替换 Shader 的记录充当真实材质绑定。
+5. 每个本轮激活效果节点都必须有至少一个对应 Debug 通道或参数扫描证据。
+6. Alpha Clip 或透明激活时，必须含 `alpha` 与 `clip_mask` 证据及阈值或透明度扫描。
+7. 性能分析存在时只作为预警证据：无 GLES 变体、未配置 Mali 或任何性能评级均不得单独使视觉验收失败。
+8. 任何工件缺少 Manifest、revision 或 `runId` 时，整体为 `invalid`。
 
 ## 11. `DecisionRecord` 与 Checkpoint
 

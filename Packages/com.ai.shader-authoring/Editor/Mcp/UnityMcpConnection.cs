@@ -29,7 +29,8 @@ namespace UnityMcp.Editor
         {
             Closed,
             WaitingForConnection,
-            Connected
+            SocketConnected,
+            Registered
         }
 
         private const string DefaultServerHost = "127.0.0.1";
@@ -37,22 +38,31 @@ namespace UnityMcp.Editor
         private const string ServerHostPreferenceKey = "UnityMcp.ServerHost";
         private const string ServerPortPreferenceKey = "UnityMcp.ServerPort";
         private const int MaxLogEntries = 1000;
+        private const int MaxForwardedLogsPerSecond = 20;
         private static readonly ConcurrentQueue<string> PendingMessages = new ConcurrentQueue<string>();
         private static readonly Queue<LogEntry> RecentLogs = new Queue<LogEntry>();
-        private static readonly object SendLock = new object();
+        private static readonly SemaphoreSlim SendSemaphore = new SemaphoreSlim(1, 1);
 
         private static ClientWebSocket webSocket;
         private static CancellationTokenSource cancellation;
         private static DateTime nextConnectAttemptUtc;
         private static DateTime nextStateSendUtc;
+        private static DateTime logForwardWindowUtc;
+        private static int forwardedLogsInWindow;
         private static bool connecting;
         private static bool isConnected;
+        private static bool isRegistered;
+        private static string serverInstanceId = string.Empty;
+        private static DateTime lastRegistrationAcknowledgementUtc;
         private static string lastErrorMessage = string.Empty;
         private static bool serviceEnabled = true;
         private static readonly string EditorInstanceId = GetOrCreateEditorInstanceId();
         private static readonly string ProjectPath = NormalizePath(Directory.GetParent(Application.dataPath)?.FullName ?? Application.dataPath);
 
         public static bool IsConnected => isConnected && webSocket != null && webSocket.State == WebSocketState.Open;
+        public static bool IsRegistered => IsConnected && isRegistered;
+        public static string ServerInstanceId => serverInstanceId;
+        public static DateTime LastRegistrationAcknowledgementUtc => lastRegistrationAcknowledgementUtc;
         public static string CurrentEditorInstanceId => EditorInstanceId;
         public static string CurrentProjectPath => ProjectPath;
         public static string ServerHost => EditorPrefs.GetString(ServerHostPreferenceKey, DefaultServerHost);
@@ -60,9 +70,11 @@ namespace UnityMcp.Editor
         public static bool IsServiceEnabled => serviceEnabled;
         public static ServiceState State => !serviceEnabled
             ? ServiceState.Closed
-            : IsConnected
-                ? ServiceState.Connected
-                : ServiceState.WaitingForConnection;
+            : !IsConnected
+                ? ServiceState.WaitingForConnection
+                : IsRegistered
+                    ? ServiceState.Registered
+                    : ServiceState.SocketConnected;
         public static Uri ServerUri => BuildServerUri(ServerHost, ServerPort);
         public static string LastErrorMessage => lastErrorMessage;
         public static int LogCount => RecentLogs.Count;
@@ -131,6 +143,8 @@ namespace UnityMcp.Editor
         public static void Disconnect()
         {
             isConnected = false;
+            isRegistered = false;
+            serverInstanceId = string.Empty;
             connecting = false;
             try { cancellation?.Cancel(); } catch { }
             try { webSocket?.Abort(); webSocket?.Dispose(); } catch { }
@@ -167,8 +181,10 @@ namespace UnityMcp.Editor
 
             if (IsConnected && DateTime.UtcNow >= nextStateSendUtc)
             {
-                nextStateSendUtc = DateTime.UtcNow.AddSeconds(1);
-                SendEditorState();
+                // 完整层级和 AssetDatabase.FindAssets 扫描只能由 get_editor_state 按需触发。
+                // 心跳仅用于让 MCP Server 确认 Editor 仍存活，避免每秒卡住主线程扫描整个工程。
+                nextStateSendUtc = DateTime.UtcNow.AddSeconds(5);
+                SendEditorHeartbeat();
             }
         }
 
@@ -190,6 +206,8 @@ namespace UnityMcp.Editor
                 }
 
                 isConnected = true;
+                isRegistered = false;
+                serverInstanceId = string.Empty;
                 lastErrorMessage = string.Empty;
                 nextStateSendUtc = DateTime.MinValue;
                 Send("hello", new
@@ -218,6 +236,8 @@ namespace UnityMcp.Editor
 
         private static void DisconnectSocketOnly()
         {
+            isRegistered = false;
+            serverInstanceId = string.Empty;
             try { cancellation?.Cancel(); } catch { }
             try { webSocket?.Abort(); webSocket?.Dispose(); } catch { }
             cancellation?.Dispose();
@@ -279,12 +299,28 @@ namespace UnityMcp.Editor
                 logType = type.ToString(),
                 timestamp = DateTime.UtcNow.ToString("o")
             };
-            RecentLogs.Enqueue(entry);
-            while (RecentLogs.Count > MaxLogEntries) RecentLogs.Dequeue();
-            Send("log", entry);
+            lock (RecentLogs)
+            {
+                RecentLogs.Enqueue(entry);
+                while (RecentLogs.Count > MaxLogEntries) RecentLogs.Dequeue();
+            }
+
+            // Console 日志可能在导入或编译时瞬时爆发；保留本地诊断历史，限制网络镜像量。
+            var now = DateTime.UtcNow;
+            if (now >= logForwardWindowUtc.AddSeconds(1))
+            {
+                logForwardWindowUtc = now;
+                forwardedLogsInWindow = 0;
+            }
+            if (forwardedLogsInWindow++ < MaxForwardedLogsPerSecond) Send("log", entry);
         }
 
-        private static void SendEditorState() => Send("editorState", GetEditorState());
+        private static void SendEditorHeartbeat() => Send("editorState", new
+        {
+            editorInstanceId = EditorInstanceId,
+            projectPath = ProjectPath,
+            playModeState = EditorApplication.isPlaying ? "Playing" : EditorApplication.isPaused ? "Paused" : "Stopped"
+        });
 
         private static async void Send(string type, object data)
         {
@@ -292,13 +328,13 @@ namespace UnityMcp.Editor
             var socket = webSocket;
             var token = cancellation?.Token ?? CancellationToken.None;
             var payload = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { type, data }));
+            var entered = false;
             try
             {
-                lock (SendLock)
-                {
-                    if (socket == null || socket.State != WebSocketState.Open) return;
-                    socket.SendAsync(new ArraySegment<byte>(payload), WebSocketMessageType.Text, true, token).GetAwaiter().GetResult();
-                }
+                await SendSemaphore.WaitAsync(token);
+                entered = true;
+                if (socket == null || socket.State != WebSocketState.Open) return;
+                await socket.SendAsync(new ArraySegment<byte>(payload), WebSocketMessageType.Text, true, token);
             }
             catch (Exception exception) when (!(exception is OperationCanceledException))
             {
@@ -306,7 +342,10 @@ namespace UnityMcp.Editor
                 lastErrorMessage = exception.Message;
                 nextConnectAttemptUtc = DateTime.UtcNow.AddSeconds(5);
             }
-            await Task.CompletedTask;
+            finally
+            {
+                if (entered) SendSemaphore.Release();
+            }
         }
 
         private static void HandleMessageOnMainThread(string message)
@@ -319,6 +358,9 @@ namespace UnityMcp.Editor
                     if (!root.TryGetProperty("type", out var typeElement)) return;
                     switch (typeElement.GetString())
                     {
+                    case "editorRegistered":
+                        ConfirmEditorRegistration(root.TryGetProperty("data", out var registrationData) ? registrationData.GetRawText() : "{}");
+                        break;
                     case "executeEditorCommand":
                         ExecuteEditorCommand(root.TryGetProperty("data", out var commandData) ? commandData.GetRawText() : "{}");
                         break;
@@ -340,6 +382,25 @@ namespace UnityMcp.Editor
             {
                 Debug.LogError($"[Unity MCP] Unable to process server message: {exception}");
             }
+        }
+
+        private static void ConfirmEditorRegistration(string registrationData)
+        {
+            var acknowledgement = JsonSerializer.Deserialize<EditorRegistrationAcknowledgement>(registrationData ?? "{}");
+            if (acknowledgement == null
+                || !string.Equals(acknowledgement.editorInstanceId, EditorInstanceId, StringComparison.Ordinal)
+                || !string.Equals(NormalizePath(acknowledgement.projectPath), ProjectPath, StringComparison.OrdinalIgnoreCase))
+            {
+                lastErrorMessage = "MCP 服务返回的 Editor 身份与当前 Unity 会话不匹配。";
+                isRegistered = false;
+                return;
+            }
+
+            serverInstanceId = acknowledgement.serverInstanceId ?? string.Empty;
+            lastRegistrationAcknowledgementUtc = DateTime.UtcNow;
+            isRegistered = true;
+            lastErrorMessage = string.Empty;
+            Debug.Log("[Unity MCP] Editor identity registered by server " + serverInstanceId + ".");
         }
 
         private static void ExecuteEditorCommand(string commandData)
@@ -444,8 +505,11 @@ namespace UnityMcp.Editor
                 projectStructure = new
                 {
                     scenes = EditorBuildSettings.scenes.Select(item => item.path).ToArray(),
-                    prefabs = AssetDatabase.FindAssets("t:Prefab").Select(AssetDatabase.GUIDToAssetPath).ToArray(),
-                    scripts = AssetDatabase.FindAssets("t:Script").Select(AssetDatabase.GUIDToAssetPath).ToArray()
+                    // Prefab/Script 的全库枚举在大型项目中极慢，且每次状态查询都返回完整列表会造成序列化和 WebSocket 压力。
+                    // 有精确资产需求的 MCP 工具应自行按路径读取，而非将全项目索引塞入常规 Editor 状态。
+                    prefabs = Array.Empty<string>(),
+                    scripts = Array.Empty<string>(),
+                    assetIndexing = "on_demand"
                 }
             };
         }
@@ -489,6 +553,7 @@ namespace UnityMcp.Editor
 
         private static string NormalizePath(string path) => (path ?? string.Empty).Replace('\\', '/');
 
+        [Serializable] private sealed class EditorRegistrationAcknowledgement { public string serverInstanceId { get; set; } public string editorInstanceId { get; set; } public string projectPath { get; set; } }
         [Serializable] private sealed class EditorCommandData { public string code { get; set; } public string requestId { get; set; } public string agentSessionId { get; set; } }
         [Serializable] private sealed class SelectionData { public string objectPath { get; set; } }
         [Serializable] private sealed class LogEntry { public string message; public string stackTrace; public string logType; public string timestamp; }

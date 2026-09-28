@@ -874,23 +874,24 @@ MarkupShaderGUIAuthoringRequest
 
 Before calling `ensure_validation_scene` or `capture_validation`, complete this non-skippable request preflight:
 
-1. Assemble the full nested payload, then explicitly verify and echo `operationContext.runId`, `operationContext.skill`, `operationContext.codePlanId`, `idempotencyKey`, `validationProfile.scenePath`, `validationProfile.cameraPath`, `target.objectPath`, and `target.materialPath`. Empty objects, placeholder objects, and the legacy `shaderPath` substitute are forbidden.
-2. `capture_validation` must include a non-empty `captures` array. Each capture must declare a unique `captureName` and `bindingMode`: `preserve_original` for the reference capture and `generated_material` for response captures that bind the generated `.mat`.
-3. A validation failure caused by missing fields, types, or path validation immediately opens a circuit breaker for that tool category. Do not retry by changing only `idempotencyKey`; correct the payload and repeat preflight first. Two failures with the same root cause mark the round `BLOCKED` and require reporting the missing payload fields.
-4. After session creation, record `validationSessionId`, runId, the session manifest, and the persisted session-state artifact. After a domain reload, call capture using the same runId so the tool can restore session state; create a new session only when persisted state is missing or invalid. Never poll or reuse an unrecoverable old Job ID.
-5. Capture `preserve_original` first, followed by at least two uniquely named `generated_material` captures with meaningful parameter differences. Inspect material-binding/restoration evidence and compare PNG `contentHash` values. Identical reference and generated-material hashes indicate a no-response risk and require `REVISE`, never `PASS`.
+1. Assemble the full nested payload, then explicitly verify and echo `operationContext.runId`, `operationContext.skill`, `operationContext.codePlanId`, `idempotencyKey`, `validationProfile.scenePath`, `validationProfile.cameraPath`, `target.objectPath`, `target.shaderPath`, `target.materialAssetPath`, and `target.materialSlot`. Empty objects, placeholder objects, a `Test.mat` substitute, and a legacy material-path field are forbidden. The fixed target object is named `Sphere`.
+2. `target.materialAssetPath` must be a persisted generated `.mat` asset whose current Shader is exactly `target.shaderPath`; record the two asset revisions before creating the session. `capture_validation` must include a non-empty `captures` array. Each capture declares a unique `captureName` and `bindingMode`: `preserve_original` for the reference capture and `generated_material` for the capture that binds that exact generated `.mat`.
+3. `generated_material` captures never accept transactional `propertyOverrides`: a visual parameter variant must be a separately persisted generated material asset, validated in its own session. This prevents a screenshot from claiming to represent values that are not present in the material asset.
+4. A validation failure caused by missing fields, types, asset paths, shader/material mismatch, or binding readback immediately opens a circuit breaker for that tool category. Do not retry by changing only `idempotencyKey`; correct the payload and repeat preflight first. Two failures with the same root cause mark the round `BLOCKED` and require reporting the missing payload fields.
+5. After session creation, record `validationSessionId`, runId, the session manifest, and the persisted session-state artifact. After a domain reload, call capture using the same runId so the tool can restore session state; create a new session only when persisted state is missing or invalid. Never poll or reuse an unrecoverable old Job ID.
+6. Capture `preserve_original` before every generated-material session. Inspect material-binding/restoration evidence and compare the reference PNG `contentHash` with the generated-material PNG. Identical hashes indicate a no-response risk and require `REVISE`, never `PASS`. To compare multiple parameter variants, create one session per real generated material asset and preserve each session's binding evidence.
 
 ## Step 8：固定测试场景验证与大模型验收循环
 
-本 Skill 的渲染验收必须使用项目内固定场景 [`AI Shader Authoring.unity`](../../../Tests/AI%20Shader%20Authoring.unity)。向 Unity MCP 传递 `validationProfile.scenePath` 时，必须使用唯一允许的 Unity 工程相对规范路径 `Packages/com.ai.shader-authoring/Tests/AI Shader Authoring.unity`；不得省略 `Packages/com.ai.shader-authoring/` 前缀，不得使用 `Tests/AI Shader Authoring.unity`、当前 Editor 打开的场景、临时创建的场景或任意用户场景作出 `PASS` 判定。调用前必须确认该精确路径存在且扩展名为 `.unity`；不存在时返回 `BLOCKED`，不得猜测或回退到其他场景。验收目标固定为该场景中名称精确为 `AIShader_Sphere` 的 `GameObject`；该对象可以是根节点，也可以位于任意层级的子节点。
+本 Skill 的渲染验收必须使用项目内固定场景 [`AI Shader Authoring.unity`](../../../Tests/AI%20Shader%20Authoring.unity)。向 Unity MCP 传递 `validationProfile.scenePath` 时，必须使用唯一允许的 Unity 工程相对规范路径 `Packages/com.ai.shader-authoring/Tests/AI Shader Authoring.unity`；不得省略 `Packages/com.ai.shader-authoring/` 前缀，不得使用 `Tests/AI Shader Authoring.unity`、当前 Editor 打开的场景、临时创建的场景或任意用户场景作出 `PASS` 判定。调用前必须确认该精确路径存在且扩展名为 `.unity`；不存在时返回 `BLOCKED`，不得猜测或回退到其他场景。验收目标固定为该场景中名称精确为 `Sphere` 的 `GameObject`；该对象可以是根节点，也可以位于任意层级的子节点。
 
 ### 固定验证顺序
 
 1. **静态与编译门禁**：静态检查计划白名单、锚点、属性、渲染状态、禁止特性以及 `ReferenceShaderParityManifest`；再执行 `refresh_and_compile_assets` → `get_unity_job`，并调用 `get_console_diagnostics`。任一 Shader Error 或未获批准的基线契约偏差均直接进入 Step 7 修复循环，禁止截图和视觉判断。
-2. **打开固定测试场景并定位目标**：通过 Unity MCP 使用 `Packages/com.ai.shader-authoring/Tests/AI Shader Authoring.unity` 打开 [`AI Shader Authoring.unity`](../../../Tests/AI%20Shader%20Authoring.unity)，在该场景的全部根节点及其递归子节点中查找唯一的 `AIShader_Sphere`。必须确认它拥有 `Renderer`；未找到、找到多个同名对象、或不存在 `Renderer` 时，返回 `BLOCKED`，并报告搜索到的层级路径，不得猜测目标。
+2. **打开固定测试场景并定位目标**：通过 Unity MCP 使用 `Packages/com.ai.shader-authoring/Tests/AI Shader Authoring.unity` 打开 [`AI Shader Authoring.unity`](../../../Tests/AI%20Shader%20Authoring.unity)，在该场景的全部根节点及其递归子节点中查找唯一的 `Sphere`。必须确认它拥有 `Renderer`；未找到、找到多个同名对象、或不存在 `Renderer` 时，返回 `BLOCKED`，并报告搜索到的层级路径，不得猜测目标。
 3. **定位同场景相机**：在同一已打开场景中定位用于验证的启用 `Camera`。相机选择必须记录其层级路径；若存在多个候选相机，优先使用带 `MainCamera` 标签的启用相机，否则返回 `BLOCKED` 要求人工指定。不得使用其他已加载场景中的相机。
-4. **绑定本轮生成的真实材质资产**：本轮必须先创建或更新一个可定位的生成材质资产，并记录其 `materialAssetPath`、材质 revision、Shader 名称、Shader revision、材质槽索引和所有可见效果相关属性/贴图值。禁止通过“复制测试对象原材质后仅替换 Shader”的方式替代此步骤：这只能证明 Shader 可编译渲染，不能证明生成材质的真实参数与贴图生效。截图前，必须将 `materialAssetPath` 对应的真实 `Material` 绑定到 `AIShader_Sphere` 的目标 Renderer 槽位，并立即回读确认 `sharedMaterials[slot]` 的资产路径、材质实例 ID 与 Shader 均分别匹配 `materialAssetPath`、该材质实例和本轮 Shader；任一项不匹配即返回 `REVISE`，不得截图。若验证策略要求保留场景原始材质，允许在截图结束后恢复完整原材质槽数组；若项目明确要求固定场景持久使用生成材质，则保存场景后再次回读验证。两种策略都必须在工件中记录 `bindingMode`、截图时实际材质路径和恢复/保存结果。
-5. **截取相机画面**：使用第 3 步相机对已绑定真实生成材质的 `AIShader_Sphere` 离屏渲染并生成 PNG。截图工件、Shader revision、生成材质路径与 revision、截图时材质实例 ID、材质属性/贴图快照、目标层级路径、相机层级路径、`bindingMode` 与时间戳必须一并保存到本轮运行工件中。对于透明或 Alpha Clip 需求，同时输出 Alpha 灰度图和裁剪遮罩 Debug 图。
+4. **绑定本轮生成的真实材质资产**：本轮必须先创建或更新一个可定位的生成材质资产，并记录其 `materialAssetPath`、材质 revision、Shader 名称、Shader revision、材质槽索引和所有可见效果相关属性/贴图值。禁止通过“复制测试对象原材质后仅替换 Shader”的方式替代此步骤：这只能证明 Shader 可编译渲染，不能证明生成材质的真实参数与贴图生效。截图前，必须将 `materialAssetPath` 对应的真实 `Material` 绑定到 `Sphere` 的目标 Renderer 槽位，并立即回读确认 `sharedMaterials[slot]` 的资产路径、材质实例 ID 与 Shader 均分别匹配 `materialAssetPath`、该材质实例和本轮 Shader；任一项不匹配即返回 `REVISE`，不得截图。若验证策略要求保留场景原始材质，允许在截图结束后恢复完整原材质槽数组；若项目明确要求固定场景持久使用生成材质，则保存场景后再次回读验证。两种策略都必须在工件中记录 `bindingMode`、截图时实际材质路径和恢复/保存结果。
+5. **截取相机画面**：使用第 3 步相机对已绑定真实生成材质的 `Sphere` 离屏渲染并生成 PNG。截图工件、Shader revision、生成材质路径与 revision、截图时材质实例 ID、材质属性/贴图快照、目标层级路径、相机层级路径、`bindingMode` 与时间戳必须一并保存到本轮运行工件中。对于透明或 Alpha Clip 需求，同时输出 Alpha 灰度图和裁剪遮罩 Debug 图。
 6. **大模型视觉验收**：将第 5 步截图作为图像输入交给大模型，并同时提供本轮 `MaterialIntent` 中的可见验收目标、激活效果、关键参数值、Shader revision 和编译/Console 结果。大模型必须逐项输出：`通过`、`不通过` 或 `无法判断`，以及每项对应的可观察证据；禁止仅以“截图非空”或像素阈值判定功能生效。
 7. **验收决策与闭环**：
    - 全部目标为 `通过`：记录大模型验收结论、截图和编译证据，进入 `PASS`。
@@ -903,7 +904,7 @@ Before calling `ensure_validation_scene` or `capture_validation`, complete this 
 ```text
 编译和 Console 门禁通过
   → 打开 Packages/com.ai.shader-authoring/Tests/AI Shader Authoring.unity
-  → 递归查找唯一 AIShader_Sphere
+  → 递归查找唯一 Sphere
   → 定位同场景验证相机
   → 绑定并回读验证本轮真实生成材质资产
   → 相机截图并保存材质绑定证据
@@ -951,10 +952,10 @@ Stage 10 法线、Alpha Clip、透明等首期扩展
 
 截图像素统计或 PNG `contentHash` 只能作为辅助证据，不能单独证明指定功能生效。以下任一情况均不得判定 `PASS`，必须进入 `REVISE` 或 `BLOCKED` 并保存原因：
 
-1. 未使用精确路径 `Packages/com.ai.shader-authoring/Tests/AI Shader Authoring.unity` 实际打开固定测试场景，或未在该场景内定位到唯一 `AIShader_Sphere`。
+1. 未使用精确路径 `Packages/com.ai.shader-authoring/Tests/AI Shader Authoring.unity` 实际打开固定测试场景，或未在该场景内定位到唯一 `Sphere`。
 2. 用于截图的相机不属于固定测试场景，或目标没有 `Renderer`，或没有完整的材质槽、绑定策略和恢复/保存记录。
-3. 截图时 `AIShader_Sphere` 未实际绑定本轮 `materialAssetPath` 对应的真实生成材质资产，或回读的材质路径、实例 ID、Shader 名称、Shader revision、槽位或关键材质属性/贴图快照与记录不一致。复制原材质再临时替换 Shader 的证据一律无效。
-4. 截图中无法由大模型辨认 `AIShader_Sphere`，或关键验收目标被大模型标为 `无法判断`。
+3. 截图时 `Sphere` 未实际绑定本轮 `materialAssetPath` 对应的真实生成材质资产，或回读的材质路径、实例 ID、Shader 名称、Shader revision、槽位或关键材质属性/贴图快照与记录不一致。复制原材质再临时替换 Shader 的证据一律无效。
+4. 截图中无法由大模型辨认 `Sphere`，或关键验收目标被大模型标为 `无法判断`。
 5. 任一用户要求的可见功能被大模型标为 `不通过`，即使平均亮度、非背景像素比例或截图哈希看似正常。
 6. 编译或 Console 存在 Error；视觉截图绝不能覆盖编译失败。
 
@@ -966,7 +967,7 @@ Stage 10 法线、Alpha Clip、透明等首期扩展
 PASS
   当前阶段编译通过，静态检查通过，Console 无新增错误，且已在固定场景
   `Packages/com.ai.shader-authoring/Tests/AI Shader Authoring.unity` 内将本轮真实生成材质资产绑定到唯一
-  `AIShader_Sphere`、回读验证绑定证据并完成截图；大模型针对全部可见验收目标均给出“通过”及可观察证据，
+  `Sphere`、回读验证绑定证据并完成截图；大模型针对全部可见验收目标均给出“通过”及可观察证据，
   同时通过工程风格与属性工艺对齐检查（纪律 11-13、`ReferenceShaderParityManifest`）。未对齐工程风格或参考
   属性工艺契约、注释非中文、材质绑定证据不完整、未按 `bindingMode` 恢复/保存材质，或命中验证防线条目时，
   一律不得判定 PASS。

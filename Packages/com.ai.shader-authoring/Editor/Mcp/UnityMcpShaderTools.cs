@@ -28,6 +28,10 @@ namespace UnityMcp.Editor
         private const string GeneratedRoot = "Assets/AIShader/Generated/";
         private const string KnowledgeRoot = "Artifacts/ShaderKnowledgeBase/";
         private const string RunsRoot = "Artifacts/ShaderRuns/";
+        // Shader 验收必须使用受版本控制的固定测试夹具，禁止由调用方以层级路径选择任意场景对象。
+        private const string FixedValidationScenePath = "Packages/com.ai.shader-authoring/Tests/AI Shader Authoring.unity";
+        // Trunk 固定场景中的真实对象名为 Sphere；生成材质必须作为真实资产绑定到该夹具目标，不能通过复制夹具材质后只替换 Shader 伪造验收。
+        private const string FixedValidationRendererName = "Sphere";
         private static readonly Dictionary<string, JobRecord> Jobs = new Dictionary<string, JobRecord>();
         private static readonly Dictionary<string, ValidationSessionRecord> ValidationSessions = new Dictionary<string, ValidationSessionRecord>();
         private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, IncludeFields = true, WriteIndented = true };
@@ -1256,25 +1260,30 @@ namespace UnityMcp.Editor
         {
             var profile = RequireProperty(args, "validationProfile");
             var target = RequireProperty(args, "target");
-            var scenePath = RequireString(profile, "scenePath");
-            var cameraPath = RequireString(profile, "cameraPath");
-            var targetPath = RequireString(target, "objectPath");
-            var materialPath = RequireString(target, "materialPath");
-            RequireReadPath(scenePath);
+            var shaderPath = RequireString(target, "shaderPath");
+            var materialPath = RequireString(target, "materialAssetPath");
+            if (!materialPath.StartsWith(GeneratedRoot, StringComparison.Ordinal))
+                throw new ArgumentException("target.materialAssetPath must be a generated Material asset under " + GeneratedRoot);
+            RequireReadPath(FixedValidationScenePath);
+            RequireReadPath(shaderPath);
             RequireReadPath(materialPath);
-            if (!scenePath.EndsWith(".unity", StringComparison.OrdinalIgnoreCase) || !File.Exists(scenePath)) throw new ArgumentException("validationProfile.scenePath must reference an existing Unity scene.");
-            if (!materialPath.EndsWith(".mat", StringComparison.OrdinalIgnoreCase) || AssetDatabase.LoadAssetAtPath<Material>(materialPath) == null) throw new ArgumentException("target.materialPath must reference a loadable Material asset.");
-            if (string.IsNullOrWhiteSpace(targetPath) || string.IsNullOrWhiteSpace(cameraPath)) throw new ArgumentException("Validation target and camera paths are required.");
+            if (!File.Exists(FixedValidationScenePath)) throw new ArgumentException("Fixed validation scene is missing: " + FixedValidationScenePath);
+            var material = AssetDatabase.LoadAssetAtPath<Material>(materialPath) ?? throw new ArgumentException("target.materialAssetPath must reference a loadable generated Material asset.");
+            var shader = AssetDatabase.LoadAssetAtPath<Shader>(shaderPath) ?? throw new ArgumentException("target.shaderPath must reference a loadable generated Shader asset.");
+            if (material.shader != shader) throw new ArgumentException("target.materialAssetPath must use target.shaderPath before validation.");
 
+            ValidateFixedValidationFixture();
             var sessionId = Guid.NewGuid().ToString("N");
             var session = new ValidationSessionRecord
             {
                 sessionId = sessionId,
                 runId = TryGetRunId(args) ?? "unscoped",
-                scenePath = scenePath,
-                cameraPath = cameraPath,
-                targetPath = targetPath,
+                scenePath = FixedValidationScenePath,
                 materialPath = materialPath,
+                shaderPath = shaderPath,
+                materialRevision = Revision(materialPath),
+                shaderRevision = Revision(shaderPath),
+                materialSlot = GetInt(target, "materialSlot", 0, 0, int.MaxValue),
                 width = GetInt(profile, "width", 1024, 64, 4096),
                 height = GetInt(profile, "height", 1024, 64, 4096),
                 minAverageLuminance = GetFloat(profile, "minAverageLuminance", 0f, 0f, 1f),
@@ -1287,15 +1296,15 @@ namespace UnityMcp.Editor
             {
                 sessionId,
                 createdAtUtc = session.createdAtUtc,
-                validationScene = new { scenePath, cameraPath, width = session.width, height = session.height },
-                target = new { objectPath = targetPath, materialPath },
+                validationScene = new { scenePath = session.scenePath, camera = "unique Camera component", width = session.width, height = session.height },
+                target = new { rendererName = FixedValidationRendererName, materialAssetPath = session.materialPath, session.materialRevision, materialSlot = session.materialSlot, shaderPath = session.shaderPath, session.shaderRevision },
                 criteria = new { session.minAverageLuminance, session.minNonBackgroundRatio },
                 statePath,
-                sceneMutation = "The scene is opened additively, generated material binding is restored after every capture, and the scene is never saved."
+                sceneMutation = "The fixed scene is opened additively. The real generated Material asset is bound transactionally to Sphere for captures, then the original Renderer material slots are restored. Neither the scene nor the generated material is modified or saved."
             }, JsonOptions));
             record.artifacts.Add(statePath);
             record.artifacts.Add(path);
-            return new { validationSessionId = sessionId, manifest = new { path, contentHash = Hash(File.ReadAllText(path)) }, state = new { path = statePath, contentHash = Hash(File.ReadAllText(statePath)) }, status = "ready", validationScene = new { scenePath, cameraPath }, target = new { objectPath = targetPath, materialPath } };
+            return new { validationSessionId = sessionId, manifest = new { path, contentHash = Hash(File.ReadAllText(path)) }, state = new { path = statePath, contentHash = Hash(File.ReadAllText(statePath)) }, status = "ready", validationScene = new { scenePath = session.scenePath, camera = "unique" }, target = new { rendererName = FixedValidationRendererName, materialAssetPath = session.materialPath, session.materialRevision, materialSlot = session.materialSlot, shaderPath = session.shaderPath, session.shaderRevision } };
         }
 
         private static object CaptureValidation(JsonElement args, JobRecord record)
@@ -1307,12 +1316,16 @@ namespace UnityMcp.Editor
             var previousActiveScene = EditorSceneManager.GetActiveScene();
             try
             {
-                var targetObject = FindGameObject(scene, session.targetPath) ?? throw new ArgumentException("Validation target was not found in scene: " + session.targetPath);
-                var renderer = targetObject.GetComponent<Renderer>() ?? throw new ArgumentException("Validation target has no Renderer: " + session.targetPath);
-                var cameraObject = FindGameObject(scene, session.cameraPath) ?? throw new ArgumentException("Validation camera was not found in scene: " + session.cameraPath);
-                var camera = cameraObject.GetComponent<Camera>() ?? throw new ArgumentException("Validation camera has no Camera component: " + session.cameraPath);
-                var material = AssetDatabase.LoadAssetAtPath<Material>(session.materialPath) ?? throw new ArgumentException("Validation material could not be loaded: " + session.materialPath);
+                var bindings = ResolveFixedValidationBindings(scene);
+                var renderer = bindings.renderer;
+                var camera = bindings.camera;
+                var generatedMaterial = AssetDatabase.LoadAssetAtPath<Material>(session.materialPath) ?? throw new ArgumentException("Generated validation material could not be loaded: " + session.materialPath);
+                var targetShader = AssetDatabase.LoadAssetAtPath<Shader>(session.shaderPath) ?? throw new ArgumentException("Validation Shader could not be loaded: " + session.shaderPath);
+                if (Revision(session.materialPath) != session.materialRevision || Revision(session.shaderPath) != session.shaderRevision)
+                    throw new InvalidOperationException("Generated Material or Shader changed after validation-session setup; create a new validation session so binding evidence uses matching revisions.");
+                if (generatedMaterial.shader != targetShader) throw new ArgumentException("Generated Material Shader no longer matches the validation session target Shader.");
                 var originalMaterials = renderer.sharedMaterials;
+                if (session.materialSlot >= originalMaterials.Length) throw new ArgumentException("target.materialSlot exceeds the fixed Renderer material slot count.");
                 var results = new List<object>();
                 var allPassed = true;
                 foreach (var capture in captures)
@@ -1321,20 +1334,41 @@ namespace UnityMcp.Editor
                     if (bindingMode != "generated_material" && bindingMode != "preserve_original") throw new ArgumentException("captures[].bindingMode must be generated_material or preserve_original.");
                     var captureName = SafeCaptureName(GetString(capture, "captureName") ?? bindingMode);
                     var boundGeneratedMaterial = bindingMode == "generated_material";
+                    if (boundGeneratedMaterial && capture.TryGetProperty("propertyOverrides", out _)) throw new ArgumentException("generated_material captures must use the persisted generated Material values; create a distinct generated Material asset for parameter variants.");
                     try
                     {
                         if (boundGeneratedMaterial)
                         {
-                            var assignedMaterials = new Material[Math.Max(1, originalMaterials.Length)];
-                            for (var index = 0; index < assignedMaterials.Length; index++) assignedMaterials[index] = material;
-                            renderer.sharedMaterials = assignedMaterials;
+                            var boundMaterials = (Material[])originalMaterials.Clone();
+                            boundMaterials[session.materialSlot] = generatedMaterial;
+                            renderer.sharedMaterials = boundMaterials;
+                            var actualMaterial = renderer.sharedMaterials[session.materialSlot];
+                            if (actualMaterial != generatedMaterial || AssetDatabase.GetAssetPath(actualMaterial) != session.materialPath || actualMaterial.shader != targetShader)
+                                throw new InvalidOperationException("Generated Material binding readback failed; capture was not performed.");
                         }
                         EditorSceneManager.SetActiveScene(scene);
                         var screenshot = RenderValidationCapture(camera, session, sessionId, captureName, args, out var statistics);
                         var decision = statistics.nonBackgroundRatio >= session.minNonBackgroundRatio && statistics.averageLuminance >= session.minAverageLuminance ? "pass" : "revise";
                         allPassed &= decision == "pass";
-                        results.Add(new { captureName, bindingMode, boundMaterialPath = boundGeneratedMaterial ? session.materialPath : (string)null, originalMaterialPaths = originalMaterials.Select(AssetDatabase.GetAssetPath).ToArray(), restored = true, decision, screenshot, statistics });
-                        // 截图路径已作为 capture 结果返回，报告工件会持久化整个捕获清单。
+                        var boundMaterial = renderer.sharedMaterials.Length > session.materialSlot ? renderer.sharedMaterials[session.materialSlot] : null;
+                        results.Add(new {
+                            captureName,
+                            bindingMode,
+                            targetHierarchyPath = GetHierarchyPath(renderer.transform),
+                            materialSlot = session.materialSlot,
+                            materialBinding = new {
+                                expectedAssetPath = boundGeneratedMaterial ? session.materialPath : AssetDatabase.GetAssetPath(originalMaterials[session.materialSlot]),
+                                actualAssetPath = AssetDatabase.GetAssetPath(boundMaterial),
+                                instanceId = boundMaterial != null ? boundMaterial.GetInstanceID() : 0,
+                                shaderName = boundMaterial != null && boundMaterial.shader != null ? boundMaterial.shader.name : null,
+                                materialRevision = boundGeneratedMaterial ? session.materialRevision : null,
+                                shaderRevision = boundGeneratedMaterial ? session.shaderRevision : null
+                            },
+                            originalMaterialPaths = originalMaterials.Select(AssetDatabase.GetAssetPath).ToArray(),
+                            decision,
+                            screenshot,
+                            statistics
+                        });
                     }
                     finally
                     {
@@ -1344,11 +1378,11 @@ namespace UnityMcp.Editor
                 var reportPath = WriteRunArtifact(args, "validation/" + sessionId + "/captures/validation-report.json", JsonSerializer.Serialize(new
                 {
                     capturedAtUtc = DateTime.UtcNow.ToString("o"),
-                    validationScene = new { session.scenePath, session.cameraPath },
-                    target = new { session.targetPath, session.materialPath },
+                    validationScene = new { session.scenePath, camera = "unique Camera component" },
+                    target = new { rendererName = FixedValidationRendererName, materialAssetPath = session.materialPath, session.materialRevision, session.materialSlot, shaderPath = session.shaderPath, session.shaderRevision },
                     captures = results,
                     criteria = new { session.minAverageLuminance, session.minNonBackgroundRatio },
-                    automaticDecisionScope = "Pixel thresholds establish only non-empty render evidence. Screenshot review and capture hash comparison determine material response."
+                    automaticDecisionScope = "Pixel thresholds establish only non-empty render evidence. Every generated-material capture includes a read-back asset, instance, Shader, revision and slot binding record; visual acceptance remains an external evidence decision."
                 }, JsonOptions));
                 record.artifacts.Add(reportPath);
                 return new { status = allPassed ? "passed" : "revise", decision = allPassed ? "pass" : "revise", validationSessionId = sessionId, captures = results.ToArray(), report = new { path = reportPath, contentHash = Hash(File.ReadAllText(reportPath)) } };
@@ -1400,9 +1434,11 @@ namespace UnityMcp.Editor
                     sessionId = RequireString(state, "sessionId"),
                     runId = GetString(state, "runId") ?? runId,
                     scenePath = RequireString(state, "scenePath"),
-                    cameraPath = RequireString(state, "cameraPath"),
-                    targetPath = RequireString(state, "targetPath"),
                     materialPath = RequireString(state, "materialPath"),
+                    shaderPath = RequireString(state, "shaderPath"),
+                    materialRevision = GetString(state, "materialRevision"),
+                    shaderRevision = GetString(state, "shaderRevision"),
+                    materialSlot = GetInt(state, "materialSlot", 0, 0, int.MaxValue),
                     width = GetInt(state, "width", 1024, 64, 4096),
                     height = GetInt(state, "height", 1024, 64, 4096),
                     minAverageLuminance = GetFloat(state, "minAverageLuminance", 0f, 0f, 1f),
@@ -1461,13 +1497,35 @@ namespace UnityMcp.Editor
             return name.Replace('/', '_').Replace('\\', '_');
         }
 
-        private static GameObject FindGameObject(Scene scene, string hierarchyPath)
+        private static void ValidateFixedValidationFixture()
         {
-            var segments = hierarchyPath.Trim('/').Split('/');
-            if (segments.Length == 0 || string.IsNullOrEmpty(segments[0])) return null;
-            var current = scene.GetRootGameObjects().FirstOrDefault(root => string.Equals(root.name, segments[0], StringComparison.Ordinal));
-            for (var index = 1; current != null && index < segments.Length; index++) current = current.transform.Find(segments[index])?.gameObject;
-            return current;
+            var scene = EditorSceneManager.OpenScene(FixedValidationScenePath, OpenSceneMode.Additive);
+            try { ResolveFixedValidationBindings(scene); }
+            finally { if (scene.IsValid()) EditorSceneManager.CloseScene(scene, true); }
+        }
+
+        private static FixedValidationBindings ResolveFixedValidationBindings(Scene scene)
+        {
+            var cameras = scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<Camera>(true)).ToArray();
+            if (cameras.Length != 1) throw new ArgumentException("Fixed validation scene must contain exactly one Camera; found " + cameras.Length + ".");
+            var renderers = scene.GetRootGameObjects()
+                .SelectMany(root => root.GetComponentsInChildren<Renderer>(true))
+                .Where(item => string.Equals(item.gameObject.name, FixedValidationRendererName, StringComparison.Ordinal))
+                .ToArray();
+            if (renderers.Length != 1)
+            {
+                var candidates = string.Join(", ", scene.GetRootGameObjects().SelectMany(root => root.GetComponentsInChildren<Renderer>(true)).Select(item => GetHierarchyPath(item.transform)).ToArray());
+                throw new ArgumentException("Fixed validation scene must contain exactly one Renderer named '" + FixedValidationRendererName + "'; found " + renderers.Length + ". Renderer candidates: " + candidates);
+            }
+            return new FixedValidationBindings { camera = cameras[0], renderer = renderers[0] };
+        }
+
+        private static string GetHierarchyPath(Transform transform)
+        {
+            var names = new List<string>();
+            for (var current = transform; current != null; current = current.parent) names.Add(current.name);
+            names.Reverse();
+            return string.Join("/", names.ToArray());
         }
 
         private static ImageStatistics CalculateImageStatistics(Color32[] pixels, int width, int height, Color background)
@@ -1577,14 +1635,22 @@ namespace UnityMcp.Editor
             public string sessionId;
             public string runId;
             public string scenePath;
-            public string cameraPath;
-            public string targetPath;
             public string materialPath;
+            public string shaderPath;
+            public string materialRevision;
+            public string shaderRevision;
+            public int materialSlot;
             public int width;
             public int height;
             public float minAverageLuminance;
             public float minNonBackgroundRatio;
             public string createdAtUtc;
+        }
+
+        private sealed class FixedValidationBindings
+        {
+            public Camera camera;
+            public Renderer renderer;
         }
 
         private sealed class ColorStatistics

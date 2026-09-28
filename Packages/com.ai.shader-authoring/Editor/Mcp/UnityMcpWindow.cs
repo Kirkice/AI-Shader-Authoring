@@ -41,7 +41,7 @@ namespace UnityMcp.Editor
         };
 
         private const float OuterPadding = 14f;
-        private const float StatusCardHeight = 254f;
+        private const float StatusCardHeight = 280f;
         private const float ToolCardHeight = 62f;
         private const float ToolInspectorHeight = 104f;
         private const float ToolGap = 8f;
@@ -86,6 +86,7 @@ namespace UnityMcp.Editor
             };
         }
 
+        [MenuItem("AI Shader Authoring/MCP Dashboard", priority = 0)]
         [MenuItem("Unity MCP/Dashboard", priority = 0)]
         public static void Open()
         {
@@ -153,15 +154,30 @@ namespace UnityMcp.Editor
             DrawRoundedPanel(rect, panelTexture);
             var state = UnityMcpConnection.State;
             var enabled = UnityMcpConnection.IsServiceEnabled;
-            var connected = UnityMcpConnection.IsConnected;
-            var stateColor = connected ? new Color(0.0f, 1.0f, 0.61f) : enabled ? new Color(1.0f, 0.82f, 0.38f) : new Color(1.0f, 0.23f, 0.42f);
-            var stateText = connected ? "Unity MCP 已连接" : enabled ? "Unity MCP 等待连接" : "Unity MCP 已关闭";
-            var chipText = connected ? "CONNECTED · :" + UnityMcpConnection.ServerUri.Port : enabled ? "WAITING · :" + UnityMcpConnection.ServerUri.Port : "OFFLINE";
-            var summary = connected
-                ? "已注册当前 Editor 身份；Agent 必须按 editorInstanceId 或项目路径显式绑定后才能调用工具。"
-                : enabled
-                    ? "本地 MCP 服务正在等待 Unity WebSocket 连接。"
-                    : "启用本地 Unity MCP 服务后，当前 Editor 将注册可绑定身份。";
+            var socketConnected = UnityMcpConnection.IsConnected;
+            var registered = UnityMcpConnection.IsRegistered;
+            var stateColor = registered
+                ? new Color(0.0f, 1.0f, 0.61f)
+                : socketConnected || enabled
+                    ? new Color(1.0f, 0.82f, 0.38f)
+                    : new Color(1.0f, 0.23f, 0.42f);
+            var stateText = registered
+                ? "Unity MCP 已注册到当前服务"
+                : socketConnected
+                    ? "WebSocket 已连通，等待服务确认"
+                    : enabled ? "Unity MCP 等待连接" : "Unity MCP 已关闭";
+            var chipText = registered
+                ? "REGISTERED · :" + UnityMcpConnection.ServerUri.Port
+                : socketConnected
+                    ? "SOCKET ONLY · :" + UnityMcpConnection.ServerUri.Port
+                    : enabled ? "WAITING · :" + UnityMcpConnection.ServerUri.Port : "OFFLINE";
+            var summary = registered
+                ? "服务端已确认当前 Editor 身份；若 Agent 仍不可用，请用连接诊断检查项目路径、Editor ID 与服务实例。"
+                : socketConnected
+                    ? "Unity 仅连到了 WebSocket，尚未收到 MCP Server 的身份注册确认；这通常意味着连到了错误或旧的服务实例。"
+                    : enabled
+                        ? "本地 MCP 服务正在等待 Unity WebSocket 连接。"
+                        : "启用本地 Unity MCP 服务后，当前 Editor 将注册可绑定身份。";
 
             GUI.Label(new Rect(rect.x + 14f, rect.y + 12f, 160f, 17f), "MCP SERVER  ·  GLOBAL", eyebrowStyle);
             DrawStatusDot(new Rect(rect.x + 15f, rect.y + 42f, 9f, 9f), stateColor);
@@ -170,12 +186,15 @@ namespace UnityMcp.Editor
             GUI.Label(new Rect(rect.x + 15f, rect.y + 66f, rect.width - 30f, 32f), summary, bodyStyle);
             GUI.Label(new Rect(rect.x + 15f, rect.y + 104f, rect.width - 30f, 19f), GetEndpointDisplay(), endpointStyle);
             GUI.Label(new Rect(rect.x + 15f, rect.y + 123f, rect.width - 30f, 19f), "Editor ID: " + UnityMcpConnection.CurrentEditorInstanceId, endpointStyle);
+            GUI.Label(new Rect(rect.x + 15f, rect.y + 142f, rect.width - 30f, 19f), registered
+                ? "Server 实例: " + UnityMcpConnection.ServerInstanceId
+                : "Server 确认: 未收到", endpointStyle);
 
-            GUI.Label(new Rect(rect.x + 15f, rect.y + 148f, 72f, 19f), "服务器地址", eyebrowStyle);
-            serverHost = GUI.TextField(new Rect(rect.x + 90f, rect.y + 145f, rect.width - 235f, 22f), serverHost ?? string.Empty);
-            GUI.Label(new Rect(rect.xMax - 138f, rect.y + 148f, 30f, 19f), "端口", eyebrowStyle);
-            serverPort = GUI.TextField(new Rect(rect.xMax - 104f, rect.y + 145f, 52f, 22f), serverPort ?? string.Empty);
-            if (GUI.Button(new Rect(rect.xMax - 46f, rect.y + 145f, 31f, 22f), "应用", secondaryButtonStyle))
+            GUI.Label(new Rect(rect.x + 15f, rect.y + 167f, 72f, 19f), "服务器地址", eyebrowStyle);
+            serverHost = GUI.TextField(new Rect(rect.x + 90f, rect.y + 164f, rect.width - 235f, 22f), serverHost ?? string.Empty);
+            GUI.Label(new Rect(rect.xMax - 138f, rect.y + 167f, 30f, 19f), "端口", eyebrowStyle);
+            serverPort = GUI.TextField(new Rect(rect.xMax - 104f, rect.y + 164f, 52f, 22f), serverPort ?? string.Empty);
+            if (GUI.Button(new Rect(rect.xMax - 46f, rect.y + 164f, 31f, 22f), "应用", secondaryButtonStyle))
             {
                 string error;
                 if (UnityMcpConnection.TryConfigureServerEndpoint(serverHost, serverPort, out error))
@@ -188,9 +207,9 @@ namespace UnityMcp.Editor
             }
 
             if (!string.IsNullOrEmpty(endpointConfigurationError))
-                GUI.Label(new Rect(rect.x + 15f, rect.y + 171f, rect.width - 30f, 32f), endpointConfigurationError, bodyStyle);
+                GUI.Label(new Rect(rect.x + 15f, rect.y + 190f, rect.width - 30f, 32f), endpointConfigurationError, bodyStyle);
             else
-                GUI.Label(new Rect(rect.x + 15f, rect.y + 171f, rect.width - 30f, 32f), "填写 Node 服务监听的主机名/IP 与端口；应用后会保存设置并重新连接。", bodyStyle);
+                GUI.Label(new Rect(rect.x + 15f, rect.y + 190f, rect.width - 30f, 32f), "填写 Node 服务监听的主机名/IP 与端口；应用后会保存设置并重新连接。", bodyStyle);
 
             const float gap = 8f;
             var actionsY = rect.yMax - 35f;
@@ -202,8 +221,11 @@ namespace UnityMcp.Editor
                 else UnityMcpConnection.StartService();
             }
 
-            if (GUI.Button(new Rect(rect.x + 15f + actionWidth + gap, actionsY, actionWidth, 25f), "连接信息", secondaryButtonStyle))
+            if (GUI.Button(new Rect(rect.x + 15f + actionWidth + gap, actionsY, actionWidth, 25f), "重试并查看信息", secondaryButtonStyle))
+            {
+                UnityMcpConnection.RetryConnection();
                 ShowMcpInfo();
+            }
         }
 
         private float CalculateToolsHeight()
@@ -269,10 +291,14 @@ namespace UnityMcp.Editor
             var message = "WebSocket 终端：" + endpoint + "\n"
                 + "连接地址与端口可在 Dashboard 中编辑，并会保存到 EditorPrefs。\n\n"
                 + "状态：" + GetStateDescription() + "\n"
+                + "WebSocket：" + (UnityMcpConnection.IsConnected ? "已连通" : "未连通") + "\n"
+                + "服务端注册确认：" + (UnityMcpConnection.IsRegistered ? "已确认" : "未确认") + "\n"
+                + "Server 实例：" + (string.IsNullOrEmpty(UnityMcpConnection.ServerInstanceId) ? "未收到" : UnityMcpConnection.ServerInstanceId) + "\n"
                 + "Editor ID：" + UnityMcpConnection.CurrentEditorInstanceId + "\n"
                 + "项目路径：" + UnityMcpConnection.CurrentProjectPath + "\n"
+                + "最后错误：" + (string.IsNullOrEmpty(UnityMcpConnection.LastErrorMessage) ? "无" : UnityMcpConnection.LastErrorMessage) + "\n"
                 + "Console 缓冲：" + UnityMcpConnection.LogCount + " 条\n\n"
-                + "多 Agent 场景请为每个 MCP 服务设置 UNITY_MCP_TARGET_EDITOR_ID，或设置 UNITY_MCP_TARGET_PROJECT_PATH。";
+                + "Agent 不可用时，请调用 get_mcp_connection_diagnostics 检查当前 Server 实例、绑定与已注册 Editor。";
             EditorUtility.DisplayDialog("Unity MCP 信息", message, "确定");
         }
 
@@ -286,7 +312,8 @@ namespace UnityMcp.Editor
         {
             switch (UnityMcpConnection.State)
             {
-                case UnityMcpConnection.ServiceState.Connected: return "已连接";
+                case UnityMcpConnection.ServiceState.Registered: return "服务端已确认注册";
+                case UnityMcpConnection.ServiceState.SocketConnected: return "仅 WebSocket 已连通，未注册";
                 case UnityMcpConnection.ServiceState.WaitingForConnection: return "等待连接";
                 default: return "已关闭";
             }
