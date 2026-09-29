@@ -9,7 +9,7 @@ description: 将自然语言材质需求规范化为标准 PBR 材质意图，�
 
 将用户的自然语言渲染需求转化为可审计的标准 PBR 材质实现，并通过 Unity 真实编译、固定验证场景和证据驱动的验证决策完成闭环。
 
-本 Skill 是领域编排协议，不是通用 Unity 操作层。所有 Unity 编辑器读取、资产操作、编译、场景配置、截图和日志收集均通过现有 Unity MCP 执行：[`get_editor_state`](../../Tools/unity-mcp-server/src/index.ts:359)、[`execute_editor_command`](../../Tools/unity-mcp-server/src/index.ts:406)、[`get_logs`](../../Tools/unity-mcp-server/src/index.ts:508)。
+本 Skill 是领域编排协议，不是通用 Unity 操作层。所有 Unity 编辑器读取、资产操作、编译、场景配置、截图和日志收集均通过结构化 Unity MCP 执行。工具能力矩阵见 [`unity-mcp-tool-capability-matrix.md`](../protocols/unity-mcp-tool-capability-matrix.md)，统一状态、错误、revision、幂等、Job 和验收结果见 [`unity-mcp-operation-protocol.md`](../protocols/unity-mcp-operation-protocol.md)。真实实现位于 `Editor/Mcp/`；不得引用遗留的通用编辑器命令接口或旧 MCP 源码路径。
 
 对于本 Skill 新建或实质性更新的材质 Shader，Inspector 注释布局委派给 [`markup-shader-gui-authoring`](../markup-shader-gui-authoring/SKILL.md)。主 Skill 只在 Shader 编译通过、真实 Properties 与关键字已确定后发起该委派；子 Skill 只维护 `Properties` 内的 Markup 注释与最外层 `CustomEditor` 声明，不得反向改变渲染实现。
 
@@ -72,7 +72,8 @@ EXECUTE_SHADER
 AUTHOR_SHADER_GUI
   -> VALIDATE
 VALIDATE
-  -> PASS | REVISE | BLOCKED
+  -> result = passed | degraded | blocked | failed | cancelled | interrupted
+  -> external decision = PASS | REVISE | BLOCKED
 REVISE
   -> PLAN_CODE
 ```
@@ -571,7 +572,7 @@ fresnel_rim
 
 本步骤不是重新扫描全项目或构建知识库；项目级环境、Shader Library、样本语料、工程风格和能力目录由 [`shader-knowledge-base-builder`](../shader-knowledge-base-builder/SKILL.md) 维护。
 
-输入为已通过门禁的 `knowledgeBaseVersion`、当前 `MaterialIntent` 与 `RenderingSemanticGraph`。在任何代码计划之前，调用 [`get_editor_state`](../../Tools/unity-mcp-server/src/index.ts:359) 确认连接与项目状态，再通过只读 [`execute_editor_command`](../../Tools/unity-mcp-server/src/index.ts:406) 实时核验知识库检索得到的目标资产与实现锚点。
+输入为已通过门禁的 `knowledgeBaseVersion`、当前 `MaterialIntent` 与 `RenderingSemanticGraph`。在任何代码计划之前，调用 `get_editor_state` 确认连接与项目状态，再通过只读 `get_asset_revision`、`inspect_shader_structure`、`query_shader_knowledge_base` 实时核验知识库检索得到的目标资产与实现锚点。工具调用必须遵循 [`unity-mcp-operation-protocol.md`](../protocols/unity-mcp-operation-protocol.md)。
 
 输出为任务级 `ProjectShaderProfile`：它回答本次材质任务应复用哪个 Shader、Pass、函数、属性、渲染状态和 Library 函数卡片，以及它们在当前 revision 下是否依然存在和可用。
 
@@ -760,15 +761,16 @@ ShaderCodePlan
 
 ## Step 7：受限执行
 
-执行必须优先使用**结构化白名单工具**，而不是任意 C#。只有白名单无法表达、且已获得显式授权的诊断或维护场景，才允许使用 [`execute_editor_command`](../../Tools/unity-mcp-server/src/index.ts:432)（裸 C# 在 Unity 6 上不作为常规执行路径）。执行类别与对应工具：
+执行必须使用结构化白名单工具，不使用任意 C# 或遗留的通用编辑器命令接口。执行类别与对应工具以 [`unity-mcp-tool-capability-matrix.md`](../protocols/unity-mcp-tool-capability-matrix.md) 为准：
 
 | 类别 | 结构化工具 |
 | --- | --- |
-| `READ_ANALYSIS` | [`get_asset_revision`](../../Tools/unity-mcp-server/src/index.ts:605)、[`inspect_shader_structure`](../../Tools/unity-mcp-server/src/index.ts:604) |
-| `WRITE_SHADER` | [`write_generated_text_asset`](../../Tools/unity-mcp-server/src/index.ts:606) |
+| `READ_ANALYSIS` | `get_editor_state`、`get_asset_revision`、`inspect_shader_structure` |
+| `WRITE_SHADER` | `write_generated_text_asset` |
 | `WRITE_MATERIAL` | `write_generated_text_asset`（`.mat` 属受控生成资产） |
-| `REFRESH_AND_COMPILE` | [`refresh_and_compile_assets`](../../Tools/unity-mcp-server/src/index.ts:607) |
-| `CAPTURE_EVIDENCE` | [`capture_validation`](../../Tools/unity-mcp-server/src/index.ts:609) |
+| `REFRESH_AND_COMPILE` | `refresh_and_compile_assets` → `get_unity_job` |
+| `CONSOLE_DIAGNOSTICS` | `get_console_diagnostics` |
+| `CAPTURE_EVIDENCE` | `ensure_validation_scene` → `capture_validation` |
 
 ### 工程风格对齐（硬性约束）
 
@@ -797,9 +799,9 @@ ShaderCodePlan
 
 每次产生写入（`WRITE_SHADER` / `WRITE_MATERIAL`）后，必须执行并记录：
 
-1. 读取命令返回值与资产 revision。
-2. 调用 [`refresh_and_compile_assets`](../../Tools/unity-mcp-server/src/index.ts:607)（异步 job），并用 [`get_unity_job`](../../Tools/unity-mcp-server/src/index.ts:599) 轮询到 `succeeded` / `failed`，读取 `diagnostics`、`errorCount`、`warningCount`。
-3. 调用 [`get_console_diagnostics`](../../Tools/unity-mcp-server/src/index.ts:611)（建议带 `assetPaths` 限定到本次生成资产，`includeWarnings: true`），获取 Console Error / Warning 与 Shader 编译错误状态。
+1. 读取写入返回值与资产 `newRevision`，并记录 `operationContext`、`runId`、`idempotencyKey`。
+2. 调用 `refresh_and_compile_assets`（异步 Job），并用 `get_unity_job` 轮询到 `succeeded` / `failed` / `interrupted`，读取 `diagnostics`、`errorCount`、`warningCount`。
+3. 调用 `get_console_diagnostics`（建议带 `assetPaths` 限定到本次生成资产，`includeWarnings: true`），生成统一 `ValidationGateResult`。
 4. 判定：
    - `errorCount == 0`：Console 干净，方可进入 Step 8 的视觉验证。
    - `errorCount > 0`：**禁止**进行任何视觉判断，进入修复循环。
@@ -847,7 +849,7 @@ MarkupShaderGUIAuthoringRequest
 #### 委派约束与返回处理
 
 1. 子 Skill 只能改动目标 Shader 的 `Properties` 注释与最外层 `CustomEditor` 声明；主 Skill 的渲染代码、关键字、属性类型/默认值、Pass 与渲染状态均为不可修改锚点。
-2. 子 Skill 生成后，主 Skill 必须将新的 Shader revision 记为本轮最终 revision，并重新执行 Step 7 的刷新、编译及 [`get_console_diagnostics`](../../Tools/unity-mcp-server/src/index.ts:611)。
+2. 子 Skill 生成后，主 Skill 必须将新的 Shader revision 记为本轮最终 revision，并重新执行 Step 7 的刷新、编译及 `get_console_diagnostics`，输出统一 `ValidationGateResult`。
 3. 子 Skill 返回解析歧义、已有未知 `CustomEditor` 冲突或不可安全自动化项时，主 Skill 将其记录到 `ShaderCodePlan.shaderGuiAuthoring.excludedReason`；不以删除属性或覆盖未知 Inspector 的方式强行通过。
 4. GUI 标记失败不会被视觉截图掩盖：若目标 Shader 的编译或解析诊断存在 Error，本轮进入 `REVISE`；若仅为用户选择的 Inspector 策略冲突，则进入 `BLOCKED` 或保留默认 Inspector，并明确报告。
 5. 在最终验证中，除渲染结果外，还必须确认 Inspector 分组、属性类型、组级开关、关键字开关及 Render Queue 字段的行为与委派计划一致。
@@ -1032,7 +1034,9 @@ BLOCKED
 - comparison result:
 
 ## Decision
-- PASS | REVISE | BLOCKED
+- result: passed | degraded | blocked | failed | cancelled | interrupted
+- external decision: PASS | REVISE | BLOCKED
+- gates: `ValidationGateResult[]`
 - evidence:
 - next action:
 ```

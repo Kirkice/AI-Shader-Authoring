@@ -36,7 +36,7 @@ description: 为 Unity Shader 的 Properties 块自动分析、设计、生成�
 - 接管资格判断：[`MarkupShaderGUIDataFactory.GetOrParse()`](../../../Editor/MarkupShaderGUI/Gui/MarkupShaderGUIDataFactory.cs:16)。
 - `CustomEditor` 写入规则：[`MarkupShaderGUISetup`](../../../Editor/MarkupShaderGUI/Gui/MarkupShaderGUISetup.cs:12)。
 
-如果上述实现与本文档存在冲突，始终以实现为准，并更新本 Skill。
+如果上述实现与本文档存在冲突，始终以实现为准，并更新本 Skill。Unity MCP 工具、统一状态、错误码、revision、幂等、Job 和 `ValidationGateResult` 规则分别见 [`unity-mcp-tool-capability-matrix.md`](../protocols/unity-mcp-tool-capability-matrix.md) 与 [`unity-mcp-operation-protocol.md`](../protocols/unity-mcp-operation-protocol.md)。
 
 ## 不可违反的规则
 
@@ -48,10 +48,13 @@ description: 为 Unity Shader 的 Properties 块自动分析、设计、生成�
 6. 未被分组的属性会由 GUI 默认绘制；但只要目标是结构化 Inspector，应优先将用户可编辑属性归入合理分组。
 7. `FeatureDes` 是可选的。缺少它不得阻止 GUI 接管；存在时仅显示顶部 Feature 说明。
 8. 不得生成 `[Toggle]`、`[ToggleOff]` 或 `[KeywordEnum]` 原生属性标记；它们会被当前解析器判定为冲突。
-9. 每次完成写入后，必须通过 Unity MCP 刷新并编译被修改的 Shader；若编辑器已连接，还必须读取目标 Shader 的诊断。
-10. 解析或编译失败时，保留失败证据，最小化修复标记，不得通过删除 Properties 属性来规避问题。
+9. 每次完成写入后，必须通过 `refresh_and_compile_assets` 刷新并编译被修改的 Shader，使用 `get_unity_job` 查询 Job，并通过 `get_console_diagnostics` 读取目标 Shader 的诊断。
+10. 写入必须携带 `operationContext`、`idempotencyKey`、匹配的 `codePlanId` 和 `baseRevision`；失败或断线时先查询原 Job/结果，不得换 key 重放未知是否完成的写入。
+11. 解析或编译失败时，保留失败证据，最小化修复标记，不得通过删除 Properties 属性来规避问题；输出统一 `ValidationGateResult`。
 
 ## 工作流程
+
+本 Skill 只允许使用真实结构化工具：读取使用 `get_asset_revision`、`inspect_shader_structure`，写入使用 `write_generated_text_asset`，编译使用 `refresh_and_compile_assets`，状态查询使用 `get_unity_job`，诊断使用 `get_console_diagnostics`。写入路径仍受 `Assets/AIShader/Generated/` 和授权计划限制。
 
 ### 阶段 1：读取与分类
 

@@ -64,6 +64,8 @@ Mali Offline Compiler 路径由用户或已确认的项目配置显式提供为 
 
 ## 执行流程
 
+所有工具调用遵循 [`unity-mcp-operation-protocol.md`](../protocols/unity-mcp-operation-protocol.md)；性能评级属于 `risk`，不是主流程 `result` 或视觉 Gate 状态。导出与分析结果必须绑定同一 `shaderRevision`。
+
 1. 确认 Shader 已通过本轮 Unity 编译与 Console 门禁；编译失败时返回主 Skill 处理，不产生基于失败源码的 Mali 结论。
 2. 调用 `export_compiled_gles_variants` 异步 Job，并以 `shaderPath` 导出 Unity GLES3x 编译产物。若该 Job 返回 `failed` 或零变体，只记录导出诊断，继续静态分析和后续视觉验收。
 3. 将导出的 `compiledGlesVariants` 原样传给 `analyze_shader_performance`；也可直接调用后者，由它在没有显式变体时自动执行同一 Unity 导出步骤。
@@ -84,6 +86,8 @@ Mali Offline Compiler 路径由用户或已确认的项目配置显式提供为 
 
 ## 输出与交接
 
+性能分析应归一化为 `ValidationGateResult`：`gateType = performance`，`status = passed | warning | blocked | failed`。`warning`、`high_risk` 和 `unrated` 只投影到 `risk`，不会阻断视觉验收；输入无效或 revision 不匹配则返回结构化错误码。
+
 返回以下内容：
 
 - Shader 路径和 SHA-256 revision。
@@ -96,7 +100,7 @@ Mali Offline Compiler 路径由用户或已确认的项目配置显式提供为 
 
 Inspector 只显示与当前 Shader revision 完全相同的摘要；详情折叠区显示变体、GPU、阶段、状态、工作寄存器、最长路径周期和 Stack spilling 状态。不得展示旧 revision 结果。
 
-主 Skill 收到结果后，无论评级为何，必须继续固定场景截图与 LLM 视觉验收；性能风险只作为后续 Shader 优化循环的输入。
+主 Skill 收到结果后，无论评级为何，必须继续固定场景截图与 LLM 视觉验收；性能风险只作为后续 Shader 优化循环的输入。断线时保留原 `runId` 和 `idempotencyKey`，先用 `get_unity_job` 查询，不得换 key 重复启动分析。
 
 ## 验收标准
 

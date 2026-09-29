@@ -11,7 +11,7 @@ description: 为 Unity 项目构建、刷新、验证并持久化项目专用 Sh
 
 知识库记录该 Unity 项目的真实渲染事实、可调用的 Shader Library 接口、现有 Shader 实现模式与工程约定。它不是通用 PBR 教程，不是原始源码镜像，也不应将整份 Unity Shader Library 直接堆入 LLM 上下文。
 
-本 Skill 通过现有通用 Unity MCP 执行只读分析：[`get_editor_state`](../../Tools/unity-mcp-server/src/index.ts:359)、[`execute_editor_command`](../../Tools/unity-mcp-server/src/index.ts:406)、[`get_logs`](../../Tools/unity-mcp-server/src/index.ts:508)。
+本 Skill 通过结构化 Unity MCP 执行分析和知识库 Job。工具能力见 [`unity-mcp-tool-capability-matrix.md`](../protocols/unity-mcp-tool-capability-matrix.md)，调用、状态、错误、幂等和恢复规则见 [`unity-mcp-operation-protocol.md`](../protocols/unity-mcp-operation-protocol.md)。真实实现位于 `Editor/Mcp/`；不得使用遗留的通用编辑器命令接口或旧 MCP 源码路径。
 
 ## 调用契约
 
@@ -35,7 +35,8 @@ description: 为 Unity 项目构建、刷新、验证并持久化项目专用 Sh
 
 ```text
 KnowledgeBaseBuildResult
-  status: fresh | partial | failed | blocked
+  result: passed | degraded | failed | blocked | interrupted
+  knowledgeBaseStatus: missing | building | fresh | partial | failed | blocked
   knowledgeBaseVersion
   buildMode: full | incremental
   manifestPath
@@ -47,7 +48,7 @@ KnowledgeBaseBuildResult
   recommendedNextAction
 ```
 
-只有 `status = fresh` 的结果可以放行 Shader Authoring 主链路。`partial` 可供人工查看，但不得被视为生成 Shader 的可靠依据。
+只有 `knowledgeBaseStatus = fresh` 且对应 Gate `status = passed` 的结果可以放行 Shader Authoring 主链路。`partial` 只能人工查看，不得被视为生成 Shader 的可靠依据。构建 Job 还必须返回统一 `ValidationGateResult`，失败时保留证据且不得覆盖 `current.json`。
 
 ## 目录与工件原则
 
@@ -132,7 +133,7 @@ Unity / Pipeline / Renderer / Color Space / Rendering Path 指纹变化
 
 ## Phase B：收集渲染环境
 
-通过 [`get_editor_state`](../../Tools/unity-mcp-server/src/index.ts:359) 与只读 [`execute_editor_command`](../../Tools/unity-mcp-server/src/index.ts:406)，建立环境事实：
+通过 `get_editor_state`、`get_shader_knowledge_base_status`、`query_shader_knowledge_base`、`get_asset_revision` 和 `inspect_shader_structure` 建立环境事实；构建或刷新使用 `build_shader_knowledge_base` 异步 Job：
 
 ```text
 environment
@@ -416,7 +417,9 @@ query: 透明加溶解边缘发光
 ```text
 ## Knowledge Base Build
 - mode:
-- result: fresh | partial | failed | blocked
+- result: passed | degraded | failed | blocked | interrupted
+- knowledgeBaseStatus: missing | building | fresh | partial | failed | blocked
+- gates: `ValidationGateResult[]`
 - knowledge base version:
 - manifest:
 
