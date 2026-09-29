@@ -44,11 +44,20 @@ KnowledgeBaseBuildResult
   coverageReport
   unresolvedItems
   evidenceSummary
+  scope
+  evidenceCount
+    total, direct, inferred, compiled, runtime
+  conflictCount
+    total, byRule[]
+  applicability
+    status: applicable | partial | unknown | not_applicable
+    score
+    matchedScope[], unmatchedScope[], reasons[]
   failureReason
   recommendedNextAction
 ```
 
-只有 `knowledgeBaseStatus = fresh` 且对应 Gate `status = passed` 的结果可以放行 Shader Authoring 主链路。`partial` 只能人工查看，不得被视为生成 Shader 的可靠依据。构建 Job 还必须返回统一 `ValidationGateResult`，失败时保留证据且不得覆盖 `current.json`。
+只有 `knowledgeBaseStatus = fresh`、对应 Gate `status = passed`、当前任务 `applicability.status = applicable` 且关键冲突已解决的结果可以放行 Shader Authoring 主链路。`partial` 只能人工查看，不得被视为生成 Shader 的可靠依据。构建 Job 还必须返回统一 `ValidationGateResult`，失败时保留证据且不得覆盖 `current.json`。详细字段见 [`knowledge-base-schema.md`](appendices/knowledge-base-schema.md)。
 
 ## 目录与工件原则
 
@@ -323,6 +332,10 @@ materialAssetLayout
 
 ### E2. 能力目录
 
+每条能力结论必须附带 `scope`、`evidenceCount`、`conflictCount` 和 `applicability`；这些字段缺失时按 `unknown` 处理，不得从单一样本推断为 `supported`。
+
+每条能力结论必须附带 `scope`、`evidenceCount`、`conflictCount` 和 `applicability`；这些字段缺失时按 `unknown` 处理，不得从单一样本推断为 `supported`。
+
 ```text
 capability
 status: supported | unsupported | unknown
@@ -330,6 +343,10 @@ evidence
 sourceLocations
 confidence
 fallbackPolicy
+scope
+evidenceCount
+conflictCount
+applicability
 ```
 
 至少评估：
@@ -385,7 +402,11 @@ query: 透明加溶解边缘发光
 
 ## Phase G：覆盖率校验、发布与报告
 
+发布前必须为每个关键分区输出 `scope`、`evidenceCount`、`conflictCount` 和 `applicability` 汇总。`fresh` 只表示构建完成，不自动表示对当前任务适用。
+
 ### G1. 最低 `fresh` 条件
+
+除原有环境和基础 PBR 覆盖要求外，还必须验证每个关键分区的 `scope`、`evidenceCount`、`conflictCount` 和 `applicability`。字段缺失按 unknown 处理，不得静默补齐。
 
 | 分类 | 最低条件 |
 |---|---|
@@ -440,6 +461,10 @@ query: 透明加溶解边缘发光
 - high-confidence conventions:
 - unknown or conflicting conventions:
 - capability summary:
+- scope summary:
+- evidence count summary:
+- conflict count summary:
+- applicability summary:
 
 ## Evidence and Freshness
 - fingerprints:

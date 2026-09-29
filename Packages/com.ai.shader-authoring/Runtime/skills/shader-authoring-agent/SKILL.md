@@ -50,6 +50,18 @@ description: 将自然语言材质需求规范化为标准 PBR 材质意图，�
 13. 参考 Shader 存在多工作流或互斥变体时（例如 Metallic 与 Specular），必须完整保留每套工作流的材质语义、贴图打包、关键字与运行时接线；不得只保留默认工作流。新增效果只能叠加在参考基线之上，不得替代、短接或降级原有工作流。
 14. 生成的 Shader 与 HLSL 代码注释必须使用中文；注释说明意图、约束与来源，不复述代码字面。
 
+## 协议附录
+
+详细数据契约和判定规则拆分到以下附录；本核心 Skill 负责编排顺序、硬性门禁和委派边界：
+
+- [`semantic-model.md`](appendices/semantic-model.md)：MaterialIntent、RenderingSemanticGraph 和效果组合。
+- [`baseline-and-capability.md`](appendices/baseline-and-capability.md)：三类参考基线与 Capability Resolver。
+- [`validation-and-evidence.md`](appendices/validation-and-evidence.md)：ValidationGateResult、证据和验收门禁。
+- [`confirmation-and-plan.md`](appendices/confirmation-and-plan.md)：ShaderCodePlan revision、planDigest 和用户确认记录。
+- [`examples.md`](appendices/examples.md)：结构化结果投影示例。
+
+附录只拆分说明，不改变本文件既有状态机、首期范围、工具白名单、写入授权、编译门禁、固定场景验证或性能非阻断规则。
+
 ## 状态机
 
 ```text
@@ -648,6 +660,8 @@ ProjectShaderProfile
 
 ## Step 5：Capability Resolver
 
+细化结果契约见 [`baseline-and-capability.md`](appendices/baseline-and-capability.md)。本步骤仍保留原有 `resolved | degraded | blocked` 对外状态；节点级使用 `selected | fallback | omitted | unsupported | blocked`，整体结果按附录规则推导。
+
 将语义图与 `ProjectShaderProfile` 对齐，输出：
 
 ```text
@@ -671,6 +685,8 @@ ResolvedSemanticGraph
 - 首期明确排除的功能被请求时，返回 `blocked` 或不支持说明，不进行隐式替代。
 
 ## Step 6：生成 Shader Code Plan
+
+计划的 revision、digest、父版本和确认关联字段见 [`confirmation-and-plan.md`](appendices/confirmation-and-plan.md)。未发生功能或资产范围变化时，现有计划字段和执行顺序保持不变。
 
 只有 `resolved` 或可接受的 `degraded` 图才能生成计划。
 
@@ -716,6 +732,8 @@ ShaderCodePlan
 - `expectedProperties` 和 `expectedKeywords` 必须来自生成后、编译前的实际 Shader 文本与项目锚点，不能凭 `MaterialIntent` 臆造。`customEditorPolicy` 默认使用 `add_if_absent`，不得静默覆盖未知的既有 `CustomEditor`。
 
 ## Step 6.5：功能与属性确认门禁
+
+确认单必须落为 [`ScopeConfirmationRecord`](appendices/confirmation-and-plan.md)，并绑定当前 `planId`、`planRevision`、`planDigest` 和 `codePlanId`。原有对外确认内容仍然保留；结构化记录只是增加可追溯性，不改变“确认前禁止写入”的门禁。
 
 在得到 `ShaderCodePlan`、但**首次写入 Shader、材质或任何渲染实现代码之前**，主 Skill 必须向用户提交一份简明的功能与属性确认单。该确认单是从已解析的 `MaterialIntent`、`ResolvedSemanticGraph`、`ProjectShaderProfile` 与 `ShaderCodePlan.generatedMaterialProperties` 投影得出，不得凭空增加未核验能力或虚构贴图资产。
 
@@ -982,6 +1000,8 @@ BLOCKED
 ```
 
 ## 每轮对外输出格式
+
+完整 Gate 与证据字段见 [`validation-and-evidence.md`](appendices/validation-and-evidence.md)。下方输出格式继续作为兼容的对外摘要格式。
 
 ```text
 ## Requirement Classification
