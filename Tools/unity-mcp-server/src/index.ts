@@ -821,7 +821,7 @@ class UnityMCPServer {
       { name: 'get_shader_knowledge_base_status', description: 'Read persistent project Shader Knowledge Base freshness and version.', category: 'Shader Knowledge', inputSchema: { type: 'object', properties: { expectedSchemaVersion: { type: 'string' } }, additionalProperties: false } },
       { name: 'build_shader_knowledge_base', description: 'Queue a full or incremental project Shader Knowledge Base build.', category: 'Shader Knowledge', inputSchema: { ...jobContext, properties: { ...jobContext.properties, mode: { type: 'string', enum: ['full', 'incremental'] }, reason: { type: 'string' } }, required: ['mode'] } },
       { name: 'query_shader_knowledge_base', description: 'Retrieve persisted Shader examples, function cards and capabilities.', category: 'Shader Knowledge', inputSchema: { type: 'object', properties: { knowledgeBaseVersion: { type: 'string' }, query: { type: 'object' } }, additionalProperties: true } },
-      { name: 'inspect_shader_structure', description: 'Read a Shader asset into structured properties, passes, entries, includes and render states.', category: 'Shader Analysis', inputSchema: { type: 'object', properties: { assetPath: { type: 'string' }, expectedRevision: { type: 'string' } }, required: ['assetPath'], additionalProperties: true } },
+      { name: 'inspect_shader_structure', description: 'Perform comment-aware lexical Shader structure extraction. Optionally compares a target with a reference; unapproved lexical differences are reported as blockers, while semantic wiring remains explicitly unknown.', category: 'Shader Analysis', inputSchema: { type: 'object', properties: { assetPath: { type: 'string' }, expectedRevision: { type: 'string' }, referenceAssetPath: { type: 'string' }, approvedDifferenceKeys: { type: 'array', items: { type: 'string', pattern: '^[a-zA-Z]+:.+' } } }, required: ['assetPath'], additionalProperties: false } },
       { name: 'get_asset_revision', description: 'Read content revisions for project-relative assets.', category: 'Shader Analysis', inputSchema: { type: 'object', properties: { assetPaths: { type: 'array', items: { type: 'string' } } }, required: ['assetPaths'], additionalProperties: false } },
       {
         name: 'write_generated_text_asset',
@@ -871,7 +871,7 @@ class UnityMCPServer {
           additionalProperties: false
         }
       },
-      { name: 'refresh_and_compile_assets', description: 'Queue refresh and import for specified assets, returning structured compile evidence.', category: 'Shader Validation', inputSchema: { ...jobContext, properties: { ...jobContext.properties, assetPaths: { type: 'array', items: { type: 'string' } } }, required: ['assetPaths'] } },
+      { name: 'refresh_and_compile_assets', description: 'Queue refresh/import and emit revision-bound compile evidence for the Shader, resolved Include summary, Materials, Unity/pipeline/build target and graphics API.', category: 'Shader Validation', inputSchema: { ...jobContext, properties: { ...jobContext.properties, assetPaths: { type: 'array', minItems: 1, items: { type: 'string' } }, materialAssetPaths: { type: 'array', items: { type: 'string' } } }, required: ['assetPaths'] } },
       {
         name: 'ensure_validation_scene',
         description: 'Queue fixed-fixture validation-session setup. A persisted generated Material asset must already use target.shaderPath; that exact asset is bound transactionally and read back during capture.',
@@ -880,6 +880,7 @@ class UnityMCPServer {
           ...jobContext,
           properties: {
             ...jobContext.properties,
+            compileEvidencePath: { type: 'string', minLength: 1 },
             validationProfile: {
               type: 'object',
               properties: {
@@ -888,7 +889,10 @@ class UnityMCPServer {
                 width: { type: 'integer', minimum: 64, maximum: 4096 },
                 height: { type: 'integer', minimum: 64, maximum: 4096 },
                 minAverageLuminance: { type: 'number', minimum: 0, maximum: 1 },
-                minNonBackgroundRatio: { type: 'number', minimum: 0, maximum: 1 }
+                minNonBackgroundRatio: { type: 'number', minimum: 0, maximum: 1 },
+                minProjectedBoundsRatio: { type: 'number', minimum: 0, maximum: 1 },
+                minTargetRegionNonBackgroundRatio: { type: 'number', minimum: 0, maximum: 1 },
+                minTargetRegionDifferenceRatio: { type: 'number', minimum: 0, maximum: 1 }
               },
               required: ['scenePath', 'cameraPath'],
               additionalProperties: false
@@ -905,12 +909,12 @@ class UnityMCPServer {
               additionalProperties: false
             }
           },
-          required: ['operationContext', 'idempotencyKey', 'validationProfile', 'target']
+          required: ['operationContext', 'idempotencyKey', 'compileEvidencePath', 'validationProfile', 'target']
         }
       },
       {
         name: 'capture_validation',
-        description: 'Queue deterministic validation capture for an existing validation session.',
+        description: 'Queue deterministic validation evidence. Each request must contain exactly one preserve_original baseline and one generated_material capture; fixed background/time and target-region occupancy are enforced.',
         category: 'Shader Validation',
         inputSchema: {
           ...jobContext,
@@ -919,7 +923,9 @@ class UnityMCPServer {
             validationSessionId: { type: 'string', minLength: 1 },
             captures: {
               type: 'array',
-              minItems: 1,
+              minItems: 2,
+              maxItems: 2,
+              description: 'Exactly one preserve_original baseline and one generated_material response capture, with distinct captureName values.',
               items: {
                 type: 'object',
                 properties: {

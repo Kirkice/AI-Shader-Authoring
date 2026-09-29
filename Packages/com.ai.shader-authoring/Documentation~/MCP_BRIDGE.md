@@ -90,6 +90,15 @@ Unity MCP 位于 [`Editor/Mcp`](../Editor/Mcp/)，并由 [`UnityMcp.Editor.asmde
 
 `analyze_shader_performance` 未显式传入 `compiledGlesVariants` 时，会自动执行同一导出步骤，然后才调用 `malioc`。外部 GLSL 输入仅供诊断与回归测试。
 
+### M4 编译与视觉证据门禁
+
+- `inspect_shader_structure` 采用去注释、块边界感知的词法提取，输出 Properties 的显示名/类型/默认值、Pass/标签、Include、关键字、入口和 Render State。传入 `referenceAssetPath` 时会生成差异清单；除 `approvedDifferenceKeys` 明确列出的差异外，状态为 `unapproved_differences`。该结果明确不证明贴图采样、宏分支或 `SurfaceData` 接线，后者仍需要项目定向测试或人工审核。
+- `refresh_and_compile_assets` 会写出不可变的 compile-evidence 工件，绑定请求资产修订、Include 摘要、材质修订、Unity/管线版本、Build Target、图形 API 和权威编译诊断。导入后会二次读取修订；任一不稳定或有错误的证据均为 `invalid`。
+- `ensure_validation_scene` 必须显式携带有效 `compileEvidencePath`。验证会严格拒绝缺少 Schema、稳定 Shader 记录、目标材质记录或目标 Shader 依赖摘要的证据；证据中每项 Include 都必须仍可解析且修订匹配，因此截图不能越过编译门禁。
+- `capture_validation` 在 finally 中恢复原始材质槽、活动场景、编辑器选择、相机清屏状态及全局时间向量；固定夹具只以附加场景打开并关闭，绝不保存。每个请求必须恰好包含一个 `preserve_original` 基线和一个 `generated_material` 捕获，且捕获名称唯一；两张 PNG 的 `contentHash` 必须不同，否则不能产生通过结论。捕获固定使用纯色背景 `#080B10` 和时间 `0`，避免天空盒或编辑器时间污染统计。
+- 每个捕获还会隔离固定夹具中的目标 Renderer，以白色单色材质渲染真实几何轮廓遮罩；遮罩渲染会在 finally 中恢复全部 Renderer 启用状态、目标材质、相机状态和临时资源。该遮罩是**几何轮廓**，不等同于透明或 Alpha Clip 后的可见性；后者必须由原始材质的区域像素差异与专项人工审核验证。
+- 每张图记录材质资产/实例/槽位回读、目标投影占屏比例、真实遮罩像素矩形、遮罩像素数量/占比、目标区域非背景比例和编译证据绑定。基线与生成材质的遮罩并集会计算目标区域平均 RGB 差异与遮罩 IoU；`minTargetRegionNonBackgroundRatio` 和 `minTargetRegionDifferenceRatio` 分别拒绝空目标与无区域响应。自动化仅验证证据有效性，不替代人工视觉结论。
+
 结构化工具的完整请求/响应定义见 [`unity-mcp-p0-p1-contract.md`](../../../plans/unity-mcp-p0-p1-contract.md)。
 
 ## Node 服务
@@ -112,6 +121,13 @@ npm run build
 - `execute_editor_command` 默认不会出现在工具列表，Node 与 Unity 两端都会拒绝。仅本地人工诊断时可同时设置 Node 的 `UNITY_MCP_ENABLE_DYNAMIC_CSHARP=1` 和 Unity EditorPrefs `UnityMcp.EnableDynamicCSharp=true`。
 - 生成资产写入必须先调用 `propose_authorization_grant`，再由本地 Unity 菜单 **AI Shader Authoring/Authorization/Approve Pending Grants** 批准。写入严格受 grant 的 run、plan、文件、revision、有效期与写入预算约束。
 - 配对凭据可通过 **AI Shader Authoring/Security/Rotate Pairing Token** 轮换；轮换会立即断开旧连接并把新凭据复制到剪贴板。动态 C# 诊断模式还会逐条显示命令摘要并要求本地人工批准。
+
+## 知识库与 Job 可靠性
+
+- 知识库 Manifest Schema v2 保存环境、工程资产和 Shader/Include 依赖闭包 fingerprint。状态查询与检索都会实时比对，不能仅凭历史 `fresh` 字段放行。
+- 知识库版本完整写入后才原子切换 `current.json`；失败构建保留最后成功版本。
+- Job 记录持久化在 `Library/UnityMcp/jobs/`。Domain Reload 或进程重启后未完成 Job 标记为 `interrupted`，不会自动重放。
+- 幂等键绑定 Job 输入摘要；同键不同输入返回冲突。活跃 Job 和保留记录均有硬上限。
 
 结构化工具不接受 C# 源码，并强制项目相对路径及允许写入根：`Assets/AIShader/Generated/`、`Artifacts/ShaderKnowledgeBase/`、`Artifacts/ShaderRuns/`。生成资产写入还必须满足 `baseRevision`、`operationContext.runId`、`codePlan.codePlanId` 与 `codePlan.allowedFiles` 校验。
 
