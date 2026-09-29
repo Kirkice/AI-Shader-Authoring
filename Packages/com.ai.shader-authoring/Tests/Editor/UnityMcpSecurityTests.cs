@@ -69,6 +69,34 @@ namespace UnityMcp.Editor.Tests
         }
 
         [Test]
+        public void KnowledgeBaseSnapshotIsCachedUntilInvalidated()
+        {
+            var type = typeof(UnityMcpConnection).Assembly.GetType("UnityMcp.Editor.UnityMcpKnowledgeBaseIntegrity", true);
+            var capture = type.GetMethod("Capture", BindingFlags.NonPublic | BindingFlags.Static);
+            var invalidate = type.GetMethod("Invalidate", BindingFlags.NonPublic | BindingFlags.Static);
+            invalidate.Invoke(null, null);
+            var first = capture.Invoke(null, null);
+            var second = capture.Invoke(null, null);
+            Assert.That(second, Is.SameAs(first));
+
+            invalidate.Invoke(null, null);
+            var third = capture.Invoke(null, null);
+            Assert.That(third, Is.Not.SameAs(first));
+        }
+
+        [Test]
+        public void PerformanceAnalysisDetectsCallerSuppliedCompiledVariants()
+        {
+            var method = ToolType.GetMethod("HasCompiledGlesInput", BindingFlags.NonPublic | BindingFlags.Static);
+            using (var populated = JsonDocument.Parse("{\"compiledGlesVariants\":[{\"name\":\"variant\"}]}"))
+            using (var empty = JsonDocument.Parse("{\"compiledGlesVariants\":[]}"))
+            {
+                Assert.That(method.Invoke(null, new object[] { populated.RootElement }), Is.True);
+                Assert.That(method.Invoke(null, new object[] { empty.RootElement }), Is.False);
+            }
+        }
+
+        [Test]
         public void ShaderStructureParserIgnoresCommentedOutKeywordsAndExtractsPropertyContract()
         {
             var parserType = typeof(UnityMcpConnection).Assembly.GetType("UnityMcp.Editor.UnityMcpShaderStructureAnalysis", true);
