@@ -25,8 +25,8 @@
 
 ---
 
-> 💡 **产品定位**  
-> 面向 Unity Shader 的 AI Shader Authoring 工具包。它将自然语言材质需求转化为 Shader、材质资产和验收证据，并在 Unity Editor 内提供受控 MCP 工具链、项目知识检索、视觉验证与性能分析能力；当前以 **URP PBR** 材质工作流作为首个完整落地与验证范式，可通过渲染管线适配扩展至 Built-in、HDRP 与自定义 SRP。
+> 💡 **产品定位**
+> 面向 Unity Shader 的 AI Shader Authoring 工具包。它将自然语言材质需求转化为 Shader、材质资产和验收证据，并在 Unity Editor 内提供受控 MCP 工具链、项目知识检索、视觉验证与性能分析能力。核心链路不预设渲染管线：当前管线、可用 Shader Library、函数声明与材质接口均从工程事实和编译证据中发现。
 
 ## 产品实机截图
 
@@ -399,7 +399,7 @@ MCP Client   ⇄   stdio Server   ⇄   WebSocket   ⇄   Unity Editor
 
 # 7. ⟐ 工程边界
 
-首期聚焦 Unity **材质 Shader**；复杂特效与后处理不在自动生成范围内。框架不锁定 URP，但 URP 是当前已完成端到端生成与验证的首个成熟范式；Built-in、HDRP 与自定义 SRP 需要依据各自的 Shader Library、材质接口和编译结果补充适配策略。
+首期聚焦 Unity **材质 Shader**；复杂特效与后处理不在自动生成范围内。框架对 Built-in、URP、HDRP 与自定义 SRP 使用同一条事实驱动链路，不把任一管线视为默认基线。某个管线中的函数卡片或样例只代表该工程当时扫描到的证据；生成前仍须依据当前管线的 Shader Library、材质接口和实际编译结果建立能力结论。
 
 视觉验收仅证明已绑定真实材质及其已赋值资源：若 Cubemap、噪声贴图或 Mask 尚未赋值，对应艺术效果需在补齐资源后重新验证。真实 Android / Mali 数据受 Android Build Support 与目标平台编译产物可用性约束。
 

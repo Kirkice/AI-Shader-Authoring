@@ -23,18 +23,18 @@ description: 为 Unity Shader 的 Properties 块自动分析、设计、生成�
 
 - 修改 Shader 的光照模型、Pass、HLSL、混合模式、关键字矩阵或贴图采样逻辑。
 - 新增未在 Shader 中声明的材质属性。
-- 修改 `Assets/MarkupShaderGUI` 的解析器或 GUI 实现；此类需求应转为 GUI 功能开发任务。
+- 修改 `Editor/MarkupShaderGUI` 的解析器或 GUI 实现；此类需求应转为 GUI 功能开发任务。
 
 ## 权威实现依据
 
 生成和校验时，必须以项目实现为准，不得按记忆臆测：
 
-- 语法常量：[`ShaderMarkupConstants`](../../Assets/MarkupShaderGUI/Parsing/ShaderMarkupConstants.cs:10)。
-- 解析与失败条件：[`ShaderMarkupParser.Parse()`](../../Assets/MarkupShaderGUI/Parsing/ShaderMarkupParser.cs:19)。
-- Inspector 实际绘制行为：[`MarkupShaderGUI.OnGUI()`](../../Assets/MarkupShaderGUI/Gui/MarkupShaderGUI.cs:24)。
-- 注释到数据模型的映射：[`ShaderMarkupModel`](../../Assets/MarkupShaderGUI/Parsing/ShaderMarkupModel.cs:20)。
-- 接管资格判断：[`MarkupShaderGUIDataFactory.GetOrParse()`](../../Assets/MarkupShaderGUI/Gui/MarkupShaderGUIDataFactory.cs:16)。
-- `CustomEditor` 写入规则：[`MarkupShaderGUISetup`](../../Assets/MarkupShaderGUI/Gui/MarkupShaderGUISetup.cs:12)。
+- 语法常量：[`ShaderMarkupConstants`](../../../Editor/MarkupShaderGUI/Parsing/ShaderMarkupConstants.cs:10)。
+- 解析与失败条件：[`ShaderMarkupParser.Parse()`](../../../Editor/MarkupShaderGUI/Parsing/ShaderMarkupParser.cs:19)。
+- Inspector 实际绘制行为：[`MarkupShaderGUI.OnGUI()`](../../../Editor/MarkupShaderGUI/Gui/MarkupShaderGUI.cs:24)。
+- 注释到数据模型的映射：[`ShaderMarkupModel`](../../../Editor/MarkupShaderGUI/Parsing/ShaderMarkupModel.cs:20)。
+- 接管资格判断：[`MarkupShaderGUIDataFactory.GetOrParse()`](../../../Editor/MarkupShaderGUI/Gui/MarkupShaderGUIDataFactory.cs:16)。
+- `CustomEditor` 写入规则：[`MarkupShaderGUISetup`](../../../Editor/MarkupShaderGUI/Gui/MarkupShaderGUISetup.cs:12)。
 
 如果上述实现与本文档存在冲突，始终以实现为准，并更新本 Skill。
 

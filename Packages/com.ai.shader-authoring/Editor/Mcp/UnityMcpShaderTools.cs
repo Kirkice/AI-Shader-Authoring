@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEditor;
+using UnityEditor.PackageManager;
 #if UNITY_6000_0_OR_NEWER
 using UnityEditor.Rendering;
 #endif
@@ -832,7 +833,7 @@ namespace UnityMcp.Editor
             var root = KnowledgeRoot + "versions/" + version + "/";
             Directory.CreateDirectory(root);
 
-            // The corpus must cover package-provided shaders (URP/HDRP/custom SRP) as well as project assets.
+            // 知识库同时覆盖项目资产与所有可解析的包资产，不预设某一渲染管线。
             var shaderPaths = AssetDatabase.FindAssets("t:Shader")
                 .Select(AssetDatabase.GUIDToAssetPath)
                 .Where(path => !string.IsNullOrEmpty(path) && (path.StartsWith("Assets/", StringComparison.Ordinal) || path.StartsWith("Packages/", StringComparison.Ordinal)))
@@ -864,8 +865,8 @@ namespace UnityMcp.Editor
             // Project-local conventions stay a separate partition so library facts are never mistaken for house style.
             File.WriteAllText(root + "project-conventions.json", "[]");
 
-            var retrievalIndex = functionCards.Select(card => new { term = card.function, partition = "library", target = card.include })
-                .Concat(capabilityCatalog.Select(item => new { term = item.capability, partition = "capabilities", target = item.include }))
+            var retrievalIndex = functionCards.Select(card => new { term = card.function, partition = "library", target = card.include, pipeline = card.pipeline, package = card.package, sourceRevision = card.sourceRevision, confidence = card.confidence })
+                .Concat(capabilityCatalog.Select(item => new { term = item.capability, partition = "capabilities", target = item.include, pipeline = item.pipeline, package = item.package, sourceRevision = item.sourceRevision, confidence = item.confidence }))
                 .ToArray();
             File.WriteAllText(root + "retrieval-index.json", JsonSerializer.Serialize(retrievalIndex, JsonOptions));
 
@@ -896,18 +897,26 @@ namespace UnityMcp.Editor
             };
         }
 
-        /// <summary>Universal Render Pipeline Shader Library root; its includes are the project's real PBR interface surface.</summary>
-        private const string UniversalLibraryRoot = "Packages/com.unity.render-pipelines.universal/ShaderLibrary/";
-
         /// <summary>
-        /// Every package Shader Library root that participates in authoring. URP provides the material interfaces,
-        /// while the core package provides the shared transform and lighting helpers that URP re-exports.
+        /// 当前工程可访问的 Shader Library 根目录。目录由项目资产和 Package Manager 的实际内容发现，
+        /// 不把任何渲染管线、包名或 Include 路径视为全局前提。
         /// </summary>
-        private static readonly string[] LibraryRoots = new[]
+        private static string[] DiscoverLibraryRoots()
         {
-            "Packages/com.unity.render-pipelines.core/ShaderLibrary/",
-            "Packages/com.unity.render-pipelines.universal/ShaderLibrary/"
-        };
+            var roots = new List<string> { "Assets/" };
+            foreach (var package in PackageInfo.GetAllRegisteredPackages())
+            {
+                if (package == null || string.IsNullOrEmpty(package.name) || string.IsNullOrEmpty(package.resolvedPath)) continue;
+                roots.Add("Packages/" + package.name + "/");
+            }
+            return roots.Distinct(StringComparer.Ordinal).OrderBy(path => path, StringComparer.Ordinal).ToArray();
+        }
+
+        private static string CurrentPipelineIdentity()
+        {
+            var pipeline = GraphicsSettings.currentRenderPipeline;
+            return pipeline == null ? "builtin" : pipeline.GetType().FullName;
+        }
 
         /// <summary>Derives the owning package name from a logical "Packages/<name>/..." include path.</summary>
         private static string PackageNameFromLogicalPath(string logicalPath)
@@ -941,7 +950,7 @@ namespace UnityMcp.Editor
             return !string.IsNullOrEmpty(physical) && File.Exists(physical) ? Revision(physical) : "absent";
         }
 
-        /// <summary>Indexes every HLSL/CGINC include the package Shader Libraries expose, with revision evidence.</summary>
+        /// <summary>索引当前工程可访问的 HLSL、CGINC 与 Shader 源文件，并保留真实来源证据。</summary>
         private static LibraryIncludeEntry[] BuildLibraryIndex()
         {
             var entries = new List<LibraryIncludeEntry>();
@@ -952,24 +961,15 @@ namespace UnityMcp.Editor
                     path = source.logicalPath,
                     sourceRevision = Revision(source.physicalPath),
                     kind = Path.GetExtension(source.physicalPath).TrimStart('.').ToLowerInvariant(),
-                    package = PackageNameFromLogicalPath(source.logicalPath)
+                    pipeline = CurrentPipelineIdentity(),
+                    package = PackageNameFromLogicalPath(source.logicalPath),
+                    evidence = "Discovered from the registered project or package source tree."
                 });
             }
             return entries.ToArray();
         }
 
-        /// <summary>URP Shader Library function tokens indexed by the knowledge base. Each one is resolved against real source.</summary>
-        private static readonly string[] FunctionTokens = new[]
-        {
-            "GetVertexPositionInputs", "GetVertexNormalInputs", "TransformObjectToWorld", "TransformObjectToWorldNormal", "TransformObjectToWorldDir",
-            "TransformWorldToObjectDir", "TransformWorldToView", "TransformWorldToHClip", "TransformObjectToHClip", "GetWorldSpaceViewDir",
-            "GetWorldSpaceNormalizeViewDir", "SafeNormalize", "SampleSH", "SampleSHVertex", "SampleSHPixel", "SampleSH9", "ComputeFogFactor",
-            "GetCameraPositionWS", "GetScaledScreenParams", "InitializeInputData", "GetMainLight", "GetAdditionalLightsCount", "GetAdditionalLight",
-            "GetAdditionalLights", "LightingLambert", "LightingSpecular", "LightingPhysicallyBased", "GlossyEnvironmentReflection", "InitializeBRDFData",
-            "DirectBRDF", "DirectBRDFSpecular", "SpecularStrength", "ReflectivitySpecular", "OneMinusReflectivityMetallic", "MinimalCookTorranceNoF0",
-            "SampleAlbedoAlpha", "AlphaDiscard", "SampleMetallicSpecGloss", "SampleNormal", "SampleEmission", "GetMainLightShadowCoord",
-            "MainLightRealtimeShadow", "GetMainLightShadowParams"
-        };
+        // 函数卡片不由预设符号表驱动；所有卡片均来自当前工程实际可读源码中的声明。
 
         private sealed class LibrarySourceFile
         {
@@ -989,14 +989,14 @@ namespace UnityMcp.Editor
         }
 
         /// <summary>
-        /// Enumerates every package Shader Library source once, in a stable order, translating registry ("Packages/...")
-        /// asset paths to their physical PackageCache locations so their contents are actually readable.
+        /// Enumerates project and registered-package Shader sources once, in a stable order, translating registry
+        /// ("Packages/...") asset paths to their physical PackageCache locations so their contents are actually readable.
         /// </summary>
         private static LibrarySourceFile[] EnumerateLibrarySourceFiles()
         {
             var results = new List<LibrarySourceFile>();
             var seen = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var root in LibraryRoots)
+            foreach (var root in DiscoverLibraryRoots())
             {
                 var logicalRoot = root.TrimEnd('/');
                 // Resolve the folder itself: probing for a sentinel header is unsafe because each package
@@ -1004,7 +1004,9 @@ namespace UnityMcp.Editor
                 var physicalRoot = ResolvePhysicalPath(logicalRoot);
                 if (string.IsNullOrEmpty(physicalRoot) || !Directory.Exists(physicalRoot)) continue;
                 var files = Directory.GetFiles(physicalRoot, "*.*", SearchOption.AllDirectories)
-                    .Where(file => file.EndsWith(".hlsl", StringComparison.OrdinalIgnoreCase) || file.EndsWith(".cginc", StringComparison.OrdinalIgnoreCase))
+                    .Where(file => file.EndsWith(".hlsl", StringComparison.OrdinalIgnoreCase)
+                        || file.EndsWith(".cginc", StringComparison.OrdinalIgnoreCase)
+                        || file.EndsWith(".shader", StringComparison.OrdinalIgnoreCase))
                     .OrderBy(file => file, StringComparer.Ordinal);
                 foreach (var file in files)
                 {
@@ -1019,93 +1021,57 @@ namespace UnityMcp.Editor
         }
 
         /// <summary>
-        /// Preferred declaring include for tokens that would otherwise be ambiguous, because the same helper is either
-        /// re-declared across libraries or shadowed by an unrelated overload in another header.
-        /// </summary>
-        private static readonly Dictionary<string, string> PreferredTokenIncludes = new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            { "TransformObjectToWorld", "Packages/com.unity.render-pipelines.core/ShaderLibrary/SpaceTransforms.hlsl" },
-            { "TransformObjectToWorldNormal", "Packages/com.unity.render-pipelines.core/ShaderLibrary/SpaceTransforms.hlsl" },
-            { "TransformObjectToWorldDir", "Packages/com.unity.render-pipelines.core/ShaderLibrary/SpaceTransforms.hlsl" },
-            { "TransformWorldToObjectDir", "Packages/com.unity.render-pipelines.core/ShaderLibrary/SpaceTransforms.hlsl" },
-            { "TransformWorldToView", "Packages/com.unity.render-pipelines.core/ShaderLibrary/SpaceTransforms.hlsl" },
-            { "TransformWorldToHClip", "Packages/com.unity.render-pipelines.core/ShaderLibrary/SpaceTransforms.hlsl" },
-            { "TransformObjectToHClip", "Packages/com.unity.render-pipelines.core/ShaderLibrary/SpaceTransforms.hlsl" },
-            { "SampleSH", "Packages/com.unity.render-pipelines.core/ShaderLibrary/EntityLighting.hlsl" },
-            { "SampleSH9", "Packages/com.unity.render-pipelines.core/ShaderLibrary/EntityLighting.hlsl" },
-            { "GetWorldSpaceViewDir", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl" },
-            { "GetWorldSpaceNormalizeViewDir", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl" },
-            { "GetCameraPositionWS", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl" },
-            { "ComputeFogFactor", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl" },
-            { "AlphaDiscard", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl" },
-            { "SampleNormal", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/SurfaceInput.hlsl" },
-            { "SampleAlbedoAlpha", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/SurfaceInput.hlsl" },
-            { "SampleMetallicSpecGloss", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/SurfaceInput.hlsl" },
-            { "SampleEmission", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/SurfaceInput.hlsl" },
-            { "InitializeBRDFData", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/BRDF.hlsl" },
-            { "GlossyEnvironmentReflection", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/GlobalIllumination.hlsl" },
-            { "MainLightRealtimeShadow", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RealtimeLights.hlsl" },
-            { "GetMainLight", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RealtimeLights.hlsl" },
-            { "GetAdditionalLightsCount", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RealtimeLights.hlsl" },
-            { "GetAdditionalLight", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RealtimeLights.hlsl" },
-            { "GetVertexPositionInputs", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl" },
-            { "GetVertexNormalInputs", "Packages/com.unity.render-pipelines.universal/ShaderLibrary/ShaderVariablesFunctions.hlsl" }
-        };
-
-        /// <summary>
-        /// Resolves every function and capability token against all package Shader Libraries. Each token is attributed to
-        /// the file that truly declares it, preferring the include the pipeline declares and, when that header does not
-        /// declare the token, falling back to the whole library rather than dropping the capability to "unknown".
+        /// 从所有已发现源码中枚举真实函数声明。这里不提供包、文件名或渲染管线优先级；
+        /// 同名声明仅按声明质量和稳定路径择优，避免把某个示例管线固化为系统事实。
         /// </summary>
         private static Dictionary<string, DeclarationLocation> ExtractLibraryDeclarations()
         {
-            var wanted = new HashSet<string>(FunctionTokens, StringComparer.Ordinal);
-            foreach (var requirement in CapabilityRequirements) wanted.Add(requirement.function);
-            var sources = EnumerateLibrarySourceFiles();
             var results = new Dictionary<string, DeclarationLocation>(StringComparer.Ordinal);
-            foreach (var token in wanted)
+            var scores = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (var source in EnumerateLibrarySourceFiles())
             {
-                var preferred = PreferredIncludeForToken(token);
-                var location = LocateBestDeclaration(sources, token, preferred) ?? (preferred == null ? null : LocateBestDeclaration(sources, token, null));
-                if (location != null) results[token] = location;
+                var codeLines = BuildCodeLines(File.ReadAllLines(source.physicalPath));
+                for (var index = 0; index < codeLines.Length; index++)
+                {
+                    var token = DeclarationToken(codeLines[index]);
+                    if (string.IsNullOrEmpty(token) || !IsDeclarationCandidate(codeLines, index, token)) continue;
+                    var score = CandidateScore(codeLines, source.fileName, index, token);
+                    if (scores.TryGetValue(token, out var currentScore) && currentScore <= score) continue;
+                    var signature = BuildSignature(codeLines, index, out var endLine);
+                    scores[token] = score;
+                    results[token] = new DeclarationLocation
+                    {
+                        logicalPath = source.logicalPath,
+                        fileName = source.fileName,
+                        startLine = index + 1,
+                        endLine = endLine,
+                        signature = signature,
+                        sourceRevision = Revision(source.physicalPath)
+                    };
+                }
             }
             return results;
         }
 
-        /// <summary>Capability requirements are authoritative; the static table covers the remaining library tokens.</summary>
-        private static string PreferredIncludeForToken(string token)
+        private static string DeclarationToken(string line)
         {
-            foreach (var requirement in CapabilityRequirements)
-            {
-                if (string.Equals(requirement.function, token, StringComparison.Ordinal)) return requirement.include;
-            }
-            return PreferredTokenIncludes.TryGetValue(token, out var include) ? include : null;
-        }
-
-        private static DeclarationLocation LocateBestDeclaration(LibrarySourceFile[] sources, string token, string preferredInclude)
-        {
-            var preferredFileName = string.IsNullOrEmpty(preferredInclude) ? null : preferredInclude.Substring(preferredInclude.LastIndexOf('/') + 1);
-            DeclarationLocation best = null;
-            var bestScore = int.MaxValue;
-            foreach (var source in sources)
-            {
-                if (preferredFileName != null && !string.Equals(source.fileName, preferredFileName, StringComparison.OrdinalIgnoreCase)) continue;
-                var codeLines = BuildCodeLines(File.ReadAllLines(source.physicalPath));
-                if (!TryLocateDeclaration(codeLines, source.fileName, token, out var startLine, out var endLine, out var signature)) continue;
-                var score = CandidateScore(codeLines, source.fileName, startLine - 1, token);
-                if (score >= bestScore) continue;
-                bestScore = score;
-                best = new DeclarationLocation { logicalPath = source.logicalPath, fileName = source.fileName, startLine = startLine, endLine = endLine, signature = signature, sourceRevision = Revision(source.physicalPath) };
-            }
-            return best;
+            if (string.IsNullOrWhiteSpace(line)) return null;
+            var openParenthesis = line.IndexOf('(');
+            if (openParenthesis <= 0) return null;
+            var end = openParenthesis - 1;
+            while (end >= 0 && char.IsWhiteSpace(line[end])) end--;
+            var start = end;
+            while (start >= 0 && (char.IsLetterOrDigit(line[start]) || line[start] == '_')) start--;
+            return end >= start + 1 ? line.Substring(start + 1, end - start) : null;
         }
 
         private static FunctionCard[] BuildFunctionCards(Dictionary<string, DeclarationLocation> declarations)
         {
             var cards = new List<FunctionCard>();
-            foreach (var token in FunctionTokens)
+            foreach (var pair in declarations.OrderBy(item => item.Key, StringComparer.Ordinal))
             {
-                if (!declarations.TryGetValue(token, out var location)) continue;
+                var token = pair.Key;
+                var location = pair.Value;
                 cards.Add(new FunctionCard
                 {
                     id = location.fileName + ":" + token,
@@ -1117,6 +1083,9 @@ namespace UnityMcp.Editor
                     startLine = location.startLine,
                     endLine = location.endLine,
                     sourceRevision = location.sourceRevision,
+                    pipeline = CurrentPipelineIdentity(),
+                    package = PackageNameFromLogicalPath(location.logicalPath),
+                    confidence = "high",
                     evidence = "Extracted from " + location.logicalPath + " line " + location.startLine + "."
                 });
             }
@@ -1153,32 +1122,6 @@ namespace UnityMcp.Editor
 
         /// <summary>Statement keywords that can never introduce a function declaration.</summary>
         private static readonly string[] StatementKeywords = new[] { "return", "if", "else", "while", "for", "switch", "case", "do", "break", "continue", "using", "sizeof", "assert", "static_assert", "throw" };
-
-        /// <summary>
-        /// Finds the strongest declaration line for a token. Call sites, argument lists inside multi-line calls,
-        /// member accesses, forward declarations and preprocessor lines are all rejected so a capability is only ever
-        /// attributed to the file and line that truly declares it.
-        /// </summary>
-        private static bool TryLocateDeclaration(string[] codeLines, string fileName, string token, out int startLine, out int endLine, out string signature)
-        {
-            startLine = 0;
-            endLine = 0;
-            signature = null;
-            var bestIndex = -1;
-            var bestScore = int.MaxValue;
-            for (var index = 0; index < codeLines.Length; index++)
-            {
-                if (!IsDeclarationCandidate(codeLines, index, token)) continue;
-                var score = CandidateScore(codeLines, fileName, index, token);
-                if (score >= bestScore) continue;
-                bestScore = score;
-                bestIndex = index;
-            }
-            if (bestIndex < 0) return false;
-            startLine = bestIndex + 1;
-            signature = BuildSignature(codeLines, bestIndex, out endLine);
-            return true;
-        }
 
         /// <summary>
         /// A line can only introduce a declaration when the token stands alone and is preceded by a pure type prefix.
@@ -1236,22 +1179,13 @@ namespace UnityMcp.Editor
             }
         }
 
-        /// <summary>
-        /// Ranks candidates so a real definition (a body that calls itself) beats a bare declaration, and a
-        /// non-deprecated header beats a compatibility shim.
-        /// </summary>
+        /// <summary>优先选择具有函数体的定义，并降低已弃用兼容头的优先级。</summary>
         private static int CandidateScore(string[] codeLines, string fileName, int index, string token)
         {
             var score = 1;
             for (var probe = index; probe < codeLines.Length && probe - index < 8; probe++)
             {
-                if (codeLines[probe].IndexOf('{') >= 0)
-                {
-                    var body = new StringBuilder();
-                    for (var inner = probe; inner < codeLines.Length && inner - probe < 24; inner++) body.Append(codeLines[inner]);
-                    if (body.ToString().IndexOf(token, StringComparison.Ordinal) >= 0) score = 0;
-                    break;
-                }
+                if (codeLines[probe].IndexOf('{') >= 0) { score = 0; break; }
                 if (codeLines[probe].IndexOf(';') >= 0) break;
             }
             if (fileName.IndexOf("deprecated", StringComparison.OrdinalIgnoreCase) >= 0) score += 4;
@@ -1285,22 +1219,23 @@ namespace UnityMcp.Editor
             return "core";
         }
 
-        /// <summary>Capabilities required by the material pipeline, each proven only by real library evidence.</summary>
+        /// <summary>
+        /// 管线无关的语义能力规则。规则只描述名称中应出现的概念词，不指定包、Include 或函数名；
+        /// 匹配结果仍必须指向当前工程扫描到的真实声明，未匹配时保持 unknown。
+        /// </summary>
         private static readonly CapabilityRequirement[] CapabilityRequirements = new[]
         {
-            new CapabilityRequirement { capability = "surface_parameters_metallic_roughness", include = "BRDF.hlsl", function = "InitializeBRDFData", note = "Metallic-Roughness SurfaceParameters 构建入口。" },
-            new CapabilityRequirement { capability = "direct_lighting_main", include = "RealtimeLights.hlsl", function = "GetMainLight", note = "主方向光结构体接口。" },
-            new CapabilityRequirement { capability = "additional_lights_count", include = "RealtimeLights.hlsl", function = "GetAdditionalLightsCount", note = "附加光数量接口。" },
-            new CapabilityRequirement { capability = "additional_light_fetch", include = "RealtimeLights.hlsl", function = "GetAdditionalLight", note = "附加光逐个获取接口。" },
-            new CapabilityRequirement { capability = "indirect_diffuse_sh", include = "Packages/com.unity.render-pipelines.core/ShaderLibrary/EntityLighting.hlsl", function = "SampleSH", note = "球谐环境漫反射；声明位于 core 包，URP 通过 include 链转发。" },
-            new CapabilityRequirement { capability = "indirect_specular_reflection", include = "GlobalIllumination.hlsl", function = "GlossyEnvironmentReflection", note = "反射探针/IBL 镜面环境光；实际效果仍取决于场景探针。" },
-            new CapabilityRequirement { capability = "world_normal_transform", include = "Packages/com.unity.render-pipelines.core/ShaderLibrary/SpaceTransforms.hlsl", function = "TransformObjectToWorldNormal", note = "世界空间法线；该接口位于 core 包而非 URP Shader Library，扫描范围外时保持 unknown 而不是臆断。" },
-            new CapabilityRequirement { capability = "view_direction_world_space", include = "ShaderVariablesFunctions.hlsl", function = "GetWorldSpaceNormalizeViewDir", note = "世界空间归一化视线方向。" },
-            new CapabilityRequirement { capability = "vertex_position_inputs", include = "ShaderVariablesFunctions.hlsl", function = "GetVertexPositionInputs", note = "顶点位置多空间变换。" },
-            new CapabilityRequirement { capability = "fresnel_rim_edge", include = "ShaderVariablesFunctions.hlsl", function = "GetWorldSpaceNormalizeViewDir", note = "菲涅尔边缘光依赖世界法线与视线方向；边缘因子为艺术化叠加项，不替代 BRDF 中的物理 Fresnel。" },
-            new CapabilityRequirement { capability = "alpha_clip_discard", include = "SurfaceInput.hlsl", function = "AlphaDiscard", note = "Alpha Clip 片元裁剪。" },
-            new CapabilityRequirement { capability = "surface_normal_sampling", include = "SurfaceInput.hlsl", function = "SampleNormal", note = "法线贴图采样。" },
-            new CapabilityRequirement { capability = "shadow_sampling", include = "RealtimeLights.hlsl", function = "MainLightRealtimeShadow", note = "主光实时阴影采样。" }
+            new CapabilityRequirement { capability = "surface_parameters_metallic_roughness", requiredTerms = new[] { "metallic" }, alternativeTerms = new[] { "roughness", "smoothness", "brdf" }, note = "Metallic-Roughness 或等价表面参数构建能力。" },
+            new CapabilityRequirement { capability = "direct_lighting_main", requiredTerms = new[] { "light" }, alternativeTerms = new[] { "main", "primary", "directional" }, note = "主要直接光访问能力。" },
+            new CapabilityRequirement { capability = "additional_lights", requiredTerms = new[] { "light" }, alternativeTerms = new[] { "additional", "extra", "punctual" }, note = "附加或局部光访问能力。" },
+            new CapabilityRequirement { capability = "indirect_diffuse", requiredTerms = new[] { "indirect" }, alternativeTerms = new[] { "diffuse", "irradiance", "sphericalharmonic" }, note = "间接漫反射或辐照度采样能力。" },
+            new CapabilityRequirement { capability = "indirect_specular_reflection", requiredTerms = new[] { "reflection" }, alternativeTerms = new[] { "specular", "environment", "probe", "ibl" }, note = "环境镜面反射或反射探针采样能力。" },
+            new CapabilityRequirement { capability = "world_normal_transform", requiredTerms = new[] { "normal", "world" }, alternativeTerms = new[] { "transform", "convert", "object" }, note = "世界空间法线转换能力。" },
+            new CapabilityRequirement { capability = "view_direction_world_space", requiredTerms = new[] { "view", "world" }, alternativeTerms = new[] { "direction", "dir", "camera" }, note = "世界空间视线方向能力。" },
+            new CapabilityRequirement { capability = "vertex_position_transform", requiredTerms = new[] { "position" }, alternativeTerms = new[] { "vertex", "transform", "clip", "world" }, note = "顶点位置空间转换能力。" },
+            new CapabilityRequirement { capability = "alpha_clip_discard", requiredTerms = new[] { "alpha" }, alternativeTerms = new[] { "clip", "discard", "cutout" }, note = "Alpha Clip 片元裁剪能力。" },
+            new CapabilityRequirement { capability = "surface_normal_sampling", requiredTerms = new[] { "normal" }, alternativeTerms = new[] { "sample", "texture", "map" }, note = "法线贴图采样能力。" },
+            new CapabilityRequirement { capability = "shadow_sampling", requiredTerms = new[] { "shadow" }, alternativeTerms = new[] { "sample", "attenuation", "visibility" }, note = "阴影或可见性采样能力。" }
         };
 
         private static CapabilityCatalogEntry[] BuildCapabilityCatalog(Dictionary<string, DeclarationLocation> declarations)
@@ -1308,21 +1243,38 @@ namespace UnityMcp.Editor
             var results = new List<CapabilityCatalogEntry>();
             foreach (var requirement in CapabilityRequirements)
             {
-                var found = declarations.TryGetValue(requirement.function, out var location);
+                var match = FindCapabilityDeclaration(declarations, requirement);
+                var found = !string.IsNullOrEmpty(match.Key);
+                var location = match.Value;
                 results.Add(new CapabilityCatalogEntry
                 {
                     capability = requirement.capability,
                     status = found ? "supported" : "unknown",
-                    include = found ? location.logicalPath : (requirement.include.StartsWith("Packages/", StringComparison.Ordinal) ? requirement.include : UniversalLibraryRoot + requirement.include),
-                    function = requirement.function,
+                    include = found ? location.logicalPath : null,
+                    function = found ? match.Key : null,
                     sourceLocation = found ? location.startLine + "-" + location.endLine : null,
+                    sourceRevision = found ? location.sourceRevision : null,
                     signature = found ? location.signature : null,
-                    confidence = found ? "high" : "unknown",
-                    evidence = found ? "Resolved from " + location.logicalPath + " (" + requirement.function + ", line " + location.startLine + ")." : "Not found in any scanned package Shader Library (" + requirement.function + "); the capability stays unknown rather than assumed.",
-                    note = requirement.note
+                    confidence = found ? "medium" : "unknown",
+                    evidence = found ? "Semantic rule matched the real declaration " + match.Key + " in " + location.logicalPath + " at line " + location.startLine + "." : "No declaration matching the pipeline-neutral semantic rule was found; the capability stays unknown.",
+                    note = requirement.note,
+                    pipeline = CurrentPipelineIdentity(),
+                    package = found ? PackageNameFromLogicalPath(location.logicalPath) : null
                 });
             }
             return results.ToArray();
+        }
+
+        private static KeyValuePair<string, DeclarationLocation> FindCapabilityDeclaration(Dictionary<string, DeclarationLocation> declarations, CapabilityRequirement requirement)
+        {
+            foreach (var pair in declarations.OrderBy(item => item.Key, StringComparer.Ordinal))
+            {
+                var normalized = pair.Key.ToLowerInvariant();
+                if (!requirement.requiredTerms.All(normalized.Contains)) continue;
+                if (requirement.alternativeTerms.Length > 0 && !requirement.alternativeTerms.Any(normalized.Contains)) continue;
+                return pair;
+            }
+            return default(KeyValuePair<string, DeclarationLocation>);
         }
 
         private sealed class LibraryIncludeEntry
@@ -1330,7 +1282,9 @@ namespace UnityMcp.Editor
             public string path { get; set; }
             public string sourceRevision { get; set; }
             public string kind { get; set; }
+            public string pipeline { get; set; }
             public string package { get; set; }
+            public string evidence { get; set; }
         }
 
         private sealed class FunctionCard
@@ -1344,7 +1298,10 @@ namespace UnityMcp.Editor
             public int startLine { get; set; }
             public int endLine { get; set; }
             public string sourceRevision { get; set; }
+            public string confidence { get; set; }
             public string evidence { get; set; }
+            public string pipeline { get; set; }
+            public string package { get; set; }
         }
 
         private sealed class CapabilityCatalogEntry
@@ -1354,17 +1311,20 @@ namespace UnityMcp.Editor
             public string include { get; set; }
             public string function { get; set; }
             public string sourceLocation { get; set; }
+            public string sourceRevision { get; set; }
             public string signature { get; set; }
             public string confidence { get; set; }
             public string evidence { get; set; }
             public string note { get; set; }
+            public string pipeline { get; set; }
+            public string package { get; set; }
         }
 
         private sealed class CapabilityRequirement
         {
             public string capability;
-            public string include;
-            public string function;
+            public string[] requiredTerms;
+            public string[] alternativeTerms;
             public string note;
         }
 

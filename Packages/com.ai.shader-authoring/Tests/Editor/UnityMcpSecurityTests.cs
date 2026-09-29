@@ -136,6 +136,24 @@ namespace UnityMcp.Editor.Tests
         }
 
         [Test]
+        public void ShaderLibraryDeclarationTokenIsDiscoveredFromSourceSyntax()
+        {
+            var token = ToolType.GetMethod("DeclarationToken", BindingFlags.NonPublic | BindingFlags.Static);
+            var candidate = ToolType.GetMethod("IsDeclarationCandidate", BindingFlags.NonPublic | BindingFlags.Static);
+            var lines = new[] { "float3 ProjectDefinedWorldNormal(float3 normalOS)" };
+            Assert.That(token.Invoke(null, new object[] { lines[0] }), Is.EqualTo("ProjectDefinedWorldNormal"));
+            Assert.That(candidate.Invoke(null, new object[] { lines, 0, "ProjectDefinedWorldNormal" }), Is.True);
+        }
+
+        [Test]
+        public void PackageOwnerIsDerivedWithoutRenderPipelineAssumptions()
+        {
+            var method = ToolType.GetMethod("PackageNameFromLogicalPath", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.That(method.Invoke(null, new object[] { "Packages/com.example.custom-shaders/Library/Common.hlsl" }), Is.EqualTo("com.example.custom-shaders"));
+            Assert.That(method.Invoke(null, new object[] { "Assets/Shaders/Common.hlsl" }), Is.EqualTo("project"));
+        }
+
+        [Test]
         public void TargetMaskHelpersCalculateUnionOverlapAndPixelDifference()
         {
             var union = ToolType.GetMethod("UnionMasks", BindingFlags.NonPublic | BindingFlags.Static);

@@ -158,22 +158,11 @@ environment
 
 ## Phase C：建立 Shader Library 索引
 
-### C1. 根据环境选择 Library 范围
+### C1. 从工程事实发现 Library 范围
 
-```text
-Built-in
-  -> UnityCG 与项目本地 CG/HLSL 为主
+索引必须从 `Assets/` 与 Package Manager 已注册包的真实解析路径出发，不预设渲染管线包名、目录名、Include 文件或函数名称。Registry、Git、Embedded 与 Local Package 均通过其已注册信息映射为稳定的 `Packages/<package-name>/...` 逻辑路径。
 
-URP
-  -> Core RP、URP ShaderLibrary 与项目本地 HLSL 为主
-  -> UnityCG 仅作为遗留兼容参考，不自动标为当前推荐实现
-
-HDRP
-  -> Core RP、HDRP ShaderLibrary 与项目本地 HLSL 为主
-
-Custom SRP
-  -> 项目本地 SRP 库为主，外部 Library 仅作为候选参考
-```
+当前 Render Pipeline Asset 只用于标注兼容上下文和后续证据筛选，不用于构造不存在的路径，也不用于排除项目本地库或其他已注册包。Built-in、URP、HDRP 与 Custom SRP 都走相同的发现流程；任一管线中的已知函数只能作为示例检索词，不能作为能力全集或默认实现。
 
 ### C2. 文件级索引
 
@@ -195,7 +184,7 @@ precisionConventions
 
 ### C3. 函数卡片
 
-将高价值可调用符号提炼为函数卡片：
+先从实际可读源码中枚举函数声明，再将高价值可调用符号提炼为函数卡片。不得由固定函数名白名单决定卡片全集；同名声明的择优也不得依赖预置管线包或 Include 路径：
 
 ```text
 symbol
@@ -244,9 +233,9 @@ Packages/        包内 Shader 与材质（owner: package）
 
 同时记录引用关系、同目录资产、材质引用的 Shader 和资产修改 revision。
 
-按 `owner` 分区标注来源：`Assets/` 记为 `project`，`Packages/` 记为 `package`。不得只凭 [`Packages/manifest.json`](../../Packages/manifest.json:1) 中出现某包就推断其 Shader 可用；必须实际枚举到文件并按 revision 记录。
+按 `owner` 分区标注来源：`Assets/` 记为 `project`，`Packages/` 记为 `package`。不得只凭 [`Packages/manifest.json`](../../Packages/manifest.json:1) 中出现某包就推断其 Shader 可用；必须通过 Package Manager 已注册信息解析真实文件并按 revision 记录。
 
-渲染管线包内的 Shader Library（例如 URP/HDRP Shader 目录）既是工程风格的对照基线，也是风格对齐类需求的样本来源；不纳入 `Packages/` 会导致样本语料与工程实际使用的关键字矩阵、`Attributes`/`Varyings` 约定脱节。
+当前工程实际启用或引用的渲染管线包可作为工程风格对照和样本来源，但任何具体包都不是固定前提。遗漏已注册包会导致样本语料与工程实际使用的关键字矩阵、数据结构和接口约定脱节。
 
 ### D2. 提取每个 Shader 的结构卡片
 
