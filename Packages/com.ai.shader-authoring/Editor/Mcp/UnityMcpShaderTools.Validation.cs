@@ -9,7 +9,6 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEditor;
-using UnityEditor.PackageManager;
 #if UNITY_6000_0_OR_NEWER
 using UnityEditor.Rendering;
 #endif
@@ -238,7 +237,7 @@ namespace UnityMcp.Editor
                             materialBinding = new {
                                 expectedAssetPath = boundGeneratedMaterial ? session.materialPath : AssetDatabase.GetAssetPath(originalMaterials[session.materialSlot]),
                                 actualAssetPath = AssetDatabase.GetAssetPath(boundMaterial),
-                                instanceId = boundMaterial != null ? boundMaterial.GetInstanceID() : 0,
+                                instanceId = GetMaterialEntityId(boundMaterial),
                                 shaderName = boundMaterial != null && boundMaterial.shader != null ? boundMaterial.shader.name : null,
                                 materialRevision = boundGeneratedMaterial ? session.materialRevision : null,
                                 shaderRevision = boundGeneratedMaterial ? session.shaderRevision : null
@@ -779,6 +778,16 @@ namespace UnityMcp.Editor
             catch { return Array.Empty<object>(); }
         }
 
+        private static string GetMaterialEntityId(Material material)
+        {
+            if (material == null) return null;
+#if UNITY_6000_0_OR_NEWER
+            // EntityId 未来不再保证可表示为 int，因此以稳定文本形式写入验证证据。
+            return material.GetEntityId().ToString();
+#else
+            return material.GetInstanceID().ToString();
+#endif
+        }
     }
 }
 #endif

@@ -9,7 +9,6 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEditor;
-using UnityEditor.PackageManager;
 #if UNITY_6000_0_OR_NEWER
 using UnityEditor.Rendering;
 #endif
@@ -124,7 +123,7 @@ namespace UnityMcp.Editor
         private static string[] DiscoverLibraryRoots()
         {
             var roots = new List<string> { "Assets/" };
-            foreach (var package in PackageInfo.GetAllRegisteredPackages())
+            foreach (var package in UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages())
             {
                 if (package == null || string.IsNullOrEmpty(package.name) || string.IsNullOrEmpty(package.resolvedPath)) continue;
                 roots.Add("Packages/" + package.name + "/");
