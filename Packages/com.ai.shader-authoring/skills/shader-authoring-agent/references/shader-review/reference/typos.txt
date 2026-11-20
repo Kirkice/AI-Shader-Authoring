@@ -1,0 +1,43 @@
+# 手工维护的拼写错误 / 同义名黑名单
+# 格式： <错误写法> TAB <正确写法> TAB <备注>
+# 由 tools/naming-lint.sh 加载（与 variant-blacklist.txt 一起生效）
+
+_FresnelSacle	_FresnelScale	拼写错误（Sacle -> Scale），存量 1 个文件
+_Dissovle_Tiling_Offset	_dissolveTex_ST	拼写错误（Dissovle -> Dissolve）且自造 Tiling 名
+_Dissolve_TiSP	_dissolveTex_ST	自造 Tiling/Speed 打包，Unity 用 _ST
+_Dissolve_TiSp	_dissolveTex_ST	同上（大小写也不一致）
+_Dissolve_Tiling_Speed	_dissolveTex_ST	同上
+_Dissolve_Tiling	_dissolveTex_ST	同上
+_Rongjie_Fanwei	_dissolveEdgeRange	拼音命名
+_Rongjie_Color_Fanwei	_dissolveEdgeRange	拼音命名
+_Rongjie_saoguang_liangbian	_dissolveEdgeRange	拼音命名
+_Rongjie_Tiling_Speed	_dissolveTex_ST	拼音 + 自造 Tiling 名
+_DissolveValue	_dissolveAmount	同义重复（进度/阈值）
+_DissolveThreshold	_dissolveAmount	同义重复
+_albedoDissolveThreshold	_dissolveAmount	同义重复
+_DissolveRangeSize	_dissolveEdgeRange	同义重复
+_DissolveRange	_dissolveEdgeRange	同义重复
+_DissolveShrink	_dissolveEdgeShrink	同义重复
+_DissolveEdgeCompression	_dissolveEdgeShrink	同义重复
+_FresnelRange	_FresnelPower	同义（范围=Power）
+_fresnelPow	_FresnelPower	大小写 + 缩写不一致
+_fresnelInt	_FresnelScale	同义（强度=Scale）
+_fresnelCol	_FresnelColor	缩写不一致
+_Rim_Color	_RimLightColor	Rim 组命名不统一
+_RimColor	_RimLightColor	Rim 组命名不统一
+_RimPower	_RimLightPower	Rim 组命名不统一
+_Rim_Intensity	_RimLightPower	Rim 组命名不统一
+_RimIntensity	_RimLightPower	Rim 组命名不统一
+_Cube_Intensity	_CubeMapIntensity	同义重复
+_CubeIntensity	_CubeMapIntensity	同义重复
+_CubeColor	_CubeMapColor	同义重复
+_Metal_Intensity	_metallicMultiplier	同义重复
+_metallic	_metallicMultiplier	缩写不一致
+_metallicMultiplierSimple	_metallicMultiplier	后缀不一致
+_AnisotropicStrength_1	_anisotropicMultiplier	同义重复
+_AnisotropyIntensity	_anisotropicMultiplier	同义重复
+_AnisotropyDistort	_sunShift	同义重复
+_AnisotropyRange	_anisotropicMultiplier	同义重复
+_AnisotropyOffset	_sunShiftOffset	同义重复
+_SSSColor	_sssColorBase	同义重复
+_newSSSIntensity	_sssIntensity	同义重复

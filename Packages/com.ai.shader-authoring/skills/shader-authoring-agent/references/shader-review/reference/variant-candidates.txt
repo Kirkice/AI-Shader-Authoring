@@ -1,0 +1,62 @@
+# 自动生成的大小写冲突候选；不是黑名单，必须人工确认语义后再更新批准文件。
+# 格式：归一化键 TAB 名称:次数:DisplayName（同文件共存时标记 COEXIST）
+materialparamsmap	_materialParamsMap:137:R 头发边缘光Mask,B 头发AO|RMO贴图|_materialParamsMap	_MaterialParamsMap:40:RMO贴图|RMO贴图(A:材质区分遮罩图)
+albedomap	_albedoMap:135:Albedo贴图|albedoMap|基础色贴图	_AlbedoMap:15:Albedo贴图|基础色贴图
+normalmap	_normalMap:135:normalMap|基础法线贴图|本体法线贴图|法线贴图	_NormalMap:43:法线贴图
+cull	_cull:128:__cull|剔除模式	_Cull:55:Cull Mode|剔除模式
+emissivemap	_emissiveMap:128:emissiveMap|自发光贴图	_EmissiveMap:40:自发光贴图
+directspecularcolor	_directSpecularColor:127:direct specular color|direct specular color 01|丝绸高光颜色|主要各向异性高光颜色|直接光高光颜色|高光颜色	_DirectSpecularColor:41:主要各向异性高光颜色|其他高光颜色|直接光高光颜色|高光颜色
+emissivecolor	_emissiveColor:126:emissiveColor|自发光颜色	_EmissiveColor:41:其他自发光颜色|自发光颜色
+albedocolor	_albedoColor:125:Albedo颜色|albedoColor|基础色|基础颜色	_AlbedoColor:48:Albedo颜色|其他基础色|基础色|水晶基础色
+occlusionscale	_occlusionScale:124:AO强度|occlusionScale	_OcclusionScale:42:AO强度
+shadowcolor	_shadowColor:121:shadow Color|阴影颜色	_ShadowColor:45:阴影颜色
+shadowstrength	_shadowStrength:120:shadowStrength|阴影强度	_ShadowStrength:42:阴影强度
+metallicmultiplier	_metallicMultiplier:119:metallicMultiplier|金属度	_MetallicMultiplier:45:其他金属度|金属度
+roughnessmultiplier	_roughnessMultiplier:119:roughnessMultiplier|粗糙度	_RoughnessMultiplier:45:其他粗糙度|粗糙度
+shadowstrengthmap	_shadowStrengthMap:117:shadowStrengthMap|阴影强度贴图|阴影遮罩贴图|阴影遮罩贴图(0无,1有)	_ShadowStrengthMap:40:阴影遮罩贴图
+cutoff	COEXIST	_cutoff:112:AlphaCut|Clip阈值|CutOff阈值|cut off	_Cutoff:33:Alpha Cutoff|cut off|溶解|溶解进度
+flowlightcolor	_FlowLightColor:104:上层流光颜色|流光颜色|流动流光颜色	_flowLightColor:1:流光颜色
+flowlighttex	_FlowLightTex:98:流光RGB:流光纹理 A:流光遮罩|流光上层纹理|流光纹理|流光纹理(RGB:颜色;A:遮罩;)|流光贴图|流光贴图: RGB: 纹理; A: 遮罩	_flowLightTex:1:[2U]RGB:流光纹理,[1U]A:流光遮罩,xy:tiling zw:speed
+zwrite	_zwrite:89:__zw|深度写入	_ZWrite:3:ZWrite|深度写入
+lasercolor	_LaserColor:52:镭射颜色	_laserColor:8:镭射颜色
+fresnelcolor	_FresnelColor:44:Fresnel Color|手绘菲涅尔颜色|菲涅尔1颜色|菲涅尔颜色|边缘光颜色|隐身菲涅尔颜色	_fresnelColor:5:菲涅尔颜色
+emissivebreathe	_emissiveBreathe:38:emissiveBreath|自发光呼吸|自发光呼吸参数	_EmissiveBreathe:14:自发光呼吸参数
+sunshiftoffset	_sunShiftOffset:35:sunShiftOffset|sunShiftOffset_01|丝绸高光偏移|主要各向异性偏移|各向异性偏移	_SunShiftOffset:5:主要各向异性偏移|各向异性偏移
+sunshift	_sunShift:34:sunShift|sunShift_01|主要各向异性扭曲|各向异性扭曲	_SunShift:5:主要各向异性扭曲|各向异性扭曲
+anisotropicmap	_anisotropicMap:32:anisotropicMap|各向异性扰动贴图|各向异性贴图|异性扰动贴图	_AnisotropicMap:2:各向异性扰动贴图|各向异性贴图
+use_flow_light	_USE_FLOW_LIGHT:32:使用流光|流光开关|流光开关关键字	_use_flow_light:1:使用流光
+anisotropicmultiplier	_anisotropicMultiplier:30:anisotropicMultiplier|丝绸高光各向异性程度|主要各项异性强度|各向异性强度|各项异性强度	_AnisotropicMultiplier:5:主要各项异性强度|各向异性强度
+anisouse2u	_anisoUse2U:30:各向异性使用2U|异性使用2U	_AnisoUse2U:1:各向异性使用2U
+fresnelpower	_FresnelPower:27:亮片边缘遮罩|菲涅尔1范围|菲涅尔范围|边缘光范围|隐身菲涅尔范围	_fresnelPower:1:菲涅尔范围
+directspecularcolor2nd	_directSpecularColor2nd:25:direct specular color 02|direct specular color1nd|次要各向异性高光颜色|直接光高光颜色(2nd)	_DirectSpecularColor2nd:4:次要各向异性高光颜色
+sunshift2nd	_sunShift2nd:25:sunShift2nd|sunShift_02|次要各向异性扭曲	_SunShift2nd:4:次要各向异性扭曲
+sunshiftoffset2nd	_sunShiftOffset2nd:25:sunShiftOffset2nd|sunShiftOffset_02|次要各向异性偏移	_SunShiftOffset2nd:4:次要各向异性偏移
+anisotropicmultiplier2nd	_anisotropicMultiplier2nd:20:anisotropicMultiplier2nd|次要各项异性强度	_AnisotropicMultiplier2nd:4:次要各项异性强度
+normalintensity	_NormalIntensity:20:法线强度|雨滴法线强度	_normalIntensity:2:法线强度
+skinmap	_skinMap:19:RG:SSS根据动态法线强度混合RG, B:changed roughness|skinMap|皮肤贴图	_SkinMap:3:皮肤贴图
+ssscolorback	_sssColorBack:19:3S颜色背后|sssColor1	_SSSColorBack:3:3S颜色背后
+ssscolorbase	_sssColorBase:19:3S颜色基础|sssColor0	_SSSColorBase:3:3S颜色基础
+ssscolorocc	_sssColorOcc:19:3S颜色Occ|sssColor2	_SSSColorOcc:3:3S颜色Occ
+sssintensity	_sssIntensity:19:3S强度|sssIntensity	_SSSIntensity:4:3S强度|SSS强度
+cubemap	_CubeMap:17:Cube|CubeMap|环境贴图	_Cubemap:1:Cubemap	_cubeMap:1:Cube贴图
+cubemapintensity	_CubeMapIntensity:16:Cube强度|环境贴图强度	_cubeMapIntensity:1:Cube强度
+cubemapmip	_CubeMapMip:16:环境贴图Mip	_cubeMapMip:1:Mip等级
+flowspeed	_FlowSpeed:8:沿身体长度流速|流动速度	_flowSpeed:2:流动速度
+laserintensity	_laserIntensity:8:镭射强度	_LaserIntensity:1:镭射强度
+outlinecolor	_outlineColor:7:描边颜色	_OutlineColor:2:描边颜色
+alphablendpower	_alphaBlendPower:5:Alpha强度(Alpha Blend)|alpha Blend Power	_AlphaBlendPower:1:alpha Blend Power
+alphaclippower	_alphaClipPower:5:Alpha强度(Alpha Clip)|alpha Clip Power	_AlphaClipPower:1:alpha Clip Power
+flowintensity	_FlowIntensity:5:扭曲强度|流动强度	_flowIntensity:2:扭曲强度
+flowmap	_FlowMap:5:流动贴图|流动贴图 RG:Flowmap|高光流动贴图	_flowMap:2:流动贴图(RG=方向)
+fresnelrange	_FresnelRange:5:菲涅尔范围	_fresnelRange:5:菲涅尔范围
+matcaptex	_MatcapTex:5:丝袜高光Matcap	_MatCapTex:2:MatCap
+outlinewidth	_outlineWidth:5:描边宽度	_OutlineWidth:2:描边宽度
+dissolve_tisp	_Dissolve_TiSP:3:溶解纹理 XY:Tiling ZW:UV流速	_Dissolve_TiSp:1:溶解纹理2 XY:Tiling ZW:流速
+warpintensity	_WarpIntensity:3:扭曲强度|扰动强度|雨滴折射强度	_warpIntensity:1:扭曲强度
+detailnormalintensity	_detailNormalIntensity:2:细节法线强度	_DetailNormalIntensity:1:细节法线强度
+detailnormalmap	_detailNormalMap:2:细节法线贴图	_DetailNormalMap:1:细节法线贴图
+noisetex	_NoiseTex:2:扰动贴图	_noiseTex:1:扰动纹理
+warpdirspeed	_WarpDirSpeed:2:扭曲方向速度|扭曲流动方向速度	_warpDirSpeed:1:扭曲流动方向速度
+warpmap	_WarpMap:2:扭曲贴图|水波法线贴图	_warpMap:1:扭曲贴图
+cubemapmask	_CubeMapMask:1:CubeMap遮罩	_cubeMapMask:1:Cube遮罩
+lg_on	_LG_ON:1:流光开关	_LG_On:1:流光开关
